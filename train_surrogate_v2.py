@@ -15,6 +15,7 @@ import copy
 from tqdm import tqdm
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from typing import Dict, Tuple, Optional
+from scipy.stats import qmc
 
 from core.pomdp import POMDP
 from core import simulation
@@ -38,12 +39,27 @@ FIXED_PARAMS = {
 FREE_PARAM = list(HDBM_PARAM_RANGE.keys()) + list(POMDP_PARAM_RANGE.keys())
 PARAM_RANGE = {**HDBM_PARAM_RANGE, **POMDP_PARAM_RANGE}
 
+# def sample_prior(n_samples: int) -> pd.DataFrame:
+#     samples = {}
+#     for k in FREE_PARAM:
+#         low, high = PARAM_RANGE[k]
+#         samples[k] = np.random.uniform(low, high, n_samples)
+#     return pd.DataFrame(samples)
+
 def sample_prior(n_samples: int) -> pd.DataFrame:
+    """
+    Latin Hypercube Sampling
+    """
+    sampler = qmc.LatinHypercube(d=len(FREE_PARAM))
+    lhs_samples = sampler.random(n=n_samples)
+    
     samples = {}
-    for k in FREE_PARAM:
+    for i, k in enumerate(FREE_PARAM):
         low, high = PARAM_RANGE[k]
-        samples[k] = np.random.uniform(low, high, n_samples)
+        samples[k] = lhs_samples[:, i] * (high - low) + low
+        
     return pd.DataFrame(samples)
+
 
 def _worker_simulate_batch(args):
     """
@@ -332,8 +348,7 @@ if __name__ == "__main__":
 
 
     # # FULL MODE    
-    # # Creates dataset: 2500 unique POMDPs * 86 conditions = ~215,000 dense samples
-    # df_simulated = get_or_generate_dataset(n_pomdp_solves=2500, filename="pomdp_dataset_200k_dense.csv")
+    # df_simulated = get_or_generate_dataset(n_pomdp_solves=20000, filename="pomdp_dataset_1.7M_lhs.csv")
     # # Train deep ResNet surrogate
-    # surrogate_model, X_min, X_max = fit_surrogate_model(df_simulated, max_epochs=500, patience=30, batch_size=2048)
+    # surrogate_model, X_min, X_max = fit_surrogate_model(df_simulated, max_epochs=200, patience=20, batch_size=4096)
     # save_surrogate(surrogate_model, X_min, X_max, filepath="pomdp_surrogate.pth")
