@@ -21,11 +21,11 @@ echo "Running in scratch directory: ${SCRATCH_DIRECTORY}"
 cd "${SCRATCH_DIRECTORY}"
 
 # A) Copy scripts and metadata CSV from the submission directory
-cp "${SLURM_SUBMIT_DIR}/train_surrogate.py" .
-cp "${SLURM_SUBMIT_DIR}/pomdp_dataset_100k.csv" .
+cp "${SLURM_SUBMIT_DIR}/train_surrogate_v2.py" .
+# cp "${SLURM_SUBMIT_DIR}/pomdp_dataset_100k.csv" .
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
 
 source /home/${USER}/miniconda3/etc/profile.d/conda.sh
 conda activate pymc_env
 
-srun python -u train_surrogate.py
+srun python -u train_surrogate_v2.py
