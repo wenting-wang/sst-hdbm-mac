@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=SURR_GPU
+#SBATCH --job-name=SURR
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24           # 32 CPU cores are sufficient for single-GPU training

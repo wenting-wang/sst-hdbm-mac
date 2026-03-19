@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 import torch
 import torch.nn as nn
+torch.set_float32_matmul_precision('high')
 import torch.optim as optim
 import numpy as np
 import pandas as pd
