@@ -2,8 +2,8 @@
 #SBATCH --job-name=SURR_GPU
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32           # 32 CPU cores are sufficient for single-GPU training
-#SBATCH --mem=128000                 # Request 128GB RAM to prevent OOM when Pandas loads the dataset
+#SBATCH --cpus-per-task=24           # 32 CPU cores are sufficient for single-GPU training
+#SBATCH --mem=110000                 # Request 128GB RAM to prevent OOM when Pandas loads the dataset
 #SBATCH --gres=gpu:1                 # Request 1 MI300A APU/GPU
 #SBATCH --time=24:00:00
 #SBATCH --output=slurm_surrogate-%j.out
