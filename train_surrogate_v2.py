@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader, TensorDataset, random_split
 from typing import Dict, Tuple, Optional
 from scipy.stats import qmc
 
+# Custom imports from the core module
 from core.pomdp import POMDP
 from core import simulation
 
@@ -123,7 +124,10 @@ def get_or_generate_dataset(n_pomdp_solves=2500, filename="pomdp_dataset_200k_de
         print(f"Found existing dataset '{filename}'. Loading data from disk...")
         return pd.read_csv(filename)
         
-    num_workers = max(1, os.cpu_count()) 
+    # num_workers = max(1, os.cpu_count()) 
+    num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', os.cpu_count()))
+    num_workers = max(1, num_workers)
+    
     expected_samples = n_pomdp_solves * 86
     print(f"Solving {n_pomdp_solves} POMDPs to generate ~{expected_samples} trials using {num_workers} CPU cores...")
     
@@ -132,6 +136,7 @@ def get_or_generate_dataset(n_pomdp_solves=2500, filename="pomdp_dataset_200k_de
     tasks = [(params_df.iloc[i].to_dict(), base_seed + i) for i in range(n_pomdp_solves)]
     
     all_results = []
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
         # returns a list of lists
         for batch_results in tqdm(executor.map(_worker_simulate_batch, tasks), total=n_pomdp_solves):
@@ -247,11 +252,22 @@ def fit_surrogate_model(df: pd.DataFrame, max_epochs=500, batch_size=1024, patie
     train_size = len(dataset) - val_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    # val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
     
-    model = POMDPSurrogate(input_dim=X.shape[1]).cuda() if torch.cuda.is_available() else POMDPSurrogate(input_dim=X.shape[1])
-    device = next(model.parameters()).device
+    
+    # model = POMDPSurrogate(input_dim=X.shape[1]).cuda() if torch.cuda.is_available() else POMDPSurrogate(input_dim=X.shape[1])
+    # device = next(model.parameters()).device
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device.type.upper()}")
+    model = POMDPSurrogate(input_dim=X.shape[1]).to(device)
+    
+    if torch.__version__ >= "2.0.0" and device.type == "cuda":
+        print("Compiling model with torch.compile()...")
+        model = torch.compile(model)
     
     # Using AdamW for better weight decay generalization
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
@@ -269,7 +285,10 @@ def fit_surrogate_model(df: pd.DataFrame, max_epochs=500, batch_size=1024, patie
         model.train()
         train_loss = 0
         for batch_X, batch_Y_choice, batch_Y_rt in train_loader:
-            batch_X, batch_Y_choice, batch_Y_rt = batch_X.to(device), batch_Y_choice.to(device), batch_Y_rt.to(device)
+            batch_X = batch_X.to(device, non_blocking=True)
+            batch_Y_choice = batch_Y_choice.to(device, non_blocking=True)
+            batch_Y_rt = batch_Y_rt.to(device, non_blocking=True)
+            
             optimizer.zero_grad()
             
             choice_logits, rt_pred = model(batch_X)
@@ -289,7 +308,10 @@ def fit_surrogate_model(df: pd.DataFrame, max_epochs=500, batch_size=1024, patie
         val_loss = 0
         with torch.no_grad():
             for batch_X, batch_Y_choice, batch_Y_rt in val_loader:
-                batch_X, batch_Y_choice, batch_Y_rt = batch_X.to(device), batch_Y_choice.to(device), batch_Y_rt.to(device)
+                batch_X = batch_X.to(device, non_blocking=True)
+                batch_Y_choice = batch_Y_choice.to(device, non_blocking=True)
+                batch_Y_rt = batch_Y_rt.to(device, non_blocking=True)
+
                 choice_logits, rt_pred = model(batch_X)
                 
                 loss_choice = criterion_choice(choice_logits, batch_Y_choice)
