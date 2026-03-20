@@ -364,8 +364,19 @@ def save_surrogate(model: nn.Module, X_min: np.ndarray, X_max: np.ndarray, filep
 
 def load_surrogate(filepath: str = "pomdp_surrogate.pth") -> Tuple[POMDPSurrogate, np.ndarray, np.ndarray]:
     checkpoint = torch.load(filepath, weights_only=False)
-    model = POMDPSurrogate(input_dim=checkpoint['input_dim'])
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model = POMDPSurrogate(input_dim=checkpoint['input_dim'],
+                           hidden_dim=1024, 
+                           num_blocks=6)
+    
+    state_dict = checkpoint['model_state_dict']
+    clean_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith('_orig_mod.'):
+            clean_state_dict[k[len('_orig_mod.'):]] = v
+        else:
+            clean_state_dict[k] = v
+            
+    model.load_state_dict(clean_state_dict)
     model.eval()
     return model, checkpoint['X_min'], checkpoint['X_max']
 

@@ -32,7 +32,7 @@ ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
 SURROGATE_MODEL_PATH = BASE_DIR / "pomdp_surrogate.pth"
 
 # Import custom modules
-from train_surrogate import load_surrogate
+from train_surrogate_v2 import load_surrogate
 from core.hdbm_v2 import HDBM  # HDBM integration enabled
 
 # --- 1. CONFIGURATION & PRIORS ---
@@ -125,14 +125,18 @@ def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.n
         warnings.warn(f"Failed to load '{csv_path}'. Using random sequences. Error: {e}")
         return None, None
 
-def sample_task_sequence(sequences: np.ndarray, probs: np.ndarray, n_blocks: int = 2) -> List[int]:
-    if sequences is None:
-        return [1 if np.random.rand() < 1/6 else 0 for _ in range(180 * n_blocks)]
-    sampled_idx = np.random.choice(len(sequences), size=n_blocks, p=probs)
-    full_seq = []
-    for idx in sampled_idx:
-        full_seq.extend(sequences[idx])
-    return full_seq
+# def sample_task_sequence(sequences: np.ndarray, probs: np.ndarray, n_blocks: int = 2) -> List[int]:
+#     if sequences is None:
+#         return [1 if np.random.rand() < 1/6 else 0 for _ in range(180 * n_blocks)]
+#     sampled_idx = np.random.choice(len(sequences), size=n_blocks, p=probs)
+#     full_seq = []
+#     for idx in sampled_idx:
+#         full_seq.extend(sequences[idx])
+#     return full_seq
+
+def sample_task_sequence(sequences: np.ndarray, probs: np.ndarray) -> List[int]:
+    sampled_idx = np.random.choice(len(sequences), p=probs)
+    return sequences[sampled_idx]
 
 # --- 3. SURROGATE & TASK SIMULATION ---
 def simulate_trial_surrogate(r_pred, pomdp_params, ssd, true_go_state, true_stop_state, surr_model, X_min, X_max):
@@ -150,17 +154,26 @@ def simulate_trial_surrogate(r_pred, pomdp_params, ssd, true_go_state, true_stop
     X_scaled = (X_raw - X_min) / (X_max - X_min + 1e-8)
     X_tensor = torch.tensor(X_scaled, dtype=torch.float32).unsqueeze(0)
     
+    # with torch.no_grad():
+    #     choice_logits, rt_pred_scaled = surr_model(X_tensor)
+    #     choice_probs = torch.softmax(choice_logits, dim=-1)
+    #     choice_idx = torch.distributions.Categorical(choice_probs).sample().item()
+    #     rt = (rt_pred_scaled.squeeze() * 40.0).item()
+        
     with torch.no_grad():
         choice_logits, rt_pred_scaled = surr_model(X_tensor)
         choice_probs = torch.softmax(choice_logits, dim=-1)
         choice_idx = torch.distributions.Categorical(choice_probs).sample().item()
-        rt = (rt_pred_scaled.squeeze() * 40.0).item()
+        
+        base_rt = (rt_pred_scaled.squeeze() * 40.0).item()
+        noise = np.random.normal(loc=0.0, scale=4.0)
+        rt = float(np.clip(base_rt + noise, a_min=1.0, a_max=40.0))
         
     return choice_idx, rt
 
 def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     params, sequences, probs, surr_model, X_min, X_max = args
-    seq_int = sample_task_sequence(sequences, probs, n_blocks=2) 
+    seq_int = sample_task_sequence(sequences, probs) 
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     

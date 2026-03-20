@@ -32,7 +32,7 @@ ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
 SURROGATE_MODEL_PATH = BASE_DIR / "pomdp_surrogate.pth"
 
 # Import custom modules
-from train_surrogate import load_surrogate
+from train_surrogate_v2 import load_surrogate
 from core.hdbm_v2 import HDBM  
 
 # --- 1. CONFIGURATION & PRIORS ---
