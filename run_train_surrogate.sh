@@ -25,7 +25,7 @@ echo "Running in scratch directory: ${SCRATCH_DIRECTORY}"
 # Copy files to the scratch directory
 # Note: Ensure the CSV, Python script, and 'core' folder are in the directory where you run sbatch
 cp "${SLURM_SUBMIT_DIR}/train_surrogate_v2.py" "${SCRATCH_DIRECTORY}/"
-cp "${SLURM_SUBMIT_DIR}/pomdp_dataset_1.7M_lhs.csv" "${SCRATCH_DIRECTORY}/"
+cp "${SLURM_SUBMIT_DIR}/pomdp_dataset_17M_lhs.parquet" "${SCRATCH_DIRECTORY}/"
 cp -r "${SLURM_SUBMIT_DIR}/core/" "${SCRATCH_DIRECTORY}/"
 
 cd "${SCRATCH_DIRECTORY}"

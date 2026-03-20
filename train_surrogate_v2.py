@@ -123,7 +123,7 @@ def get_or_generate_dataset(n_pomdp_solves=2500, filename="pomdp_dataset_200k_de
     """
     if os.path.exists(filename):
         print(f"Found existing dataset '{filename}'. Loading data from disk...")
-        return pd.read_csv(filename)
+        return pd.read_parquet(filename)
         
     # num_workers = max(1, os.cpu_count()) 
     num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', os.cpu_count()))
@@ -140,11 +140,18 @@ def get_or_generate_dataset(n_pomdp_solves=2500, filename="pomdp_dataset_200k_de
     # with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
         # returns a list of lists
-        for batch_results in tqdm(executor.map(_worker_simulate_batch, tasks), total=n_pomdp_solves):
+        # for batch_results in tqdm(executor.map(_worker_simulate_batch, tasks), total=n_pomdp_solves):
+        for batch_results in tqdm(executor.map(_worker_simulate_batch, tasks), 
+                          total=n_pomdp_solves, 
+                          mininterval=60.0, 
+                          miniters=500,
+                          ascii=True):
             all_results.extend(batch_results)
         
     df = pd.DataFrame(all_results)
-    df.to_csv(filename, index=False)
+    # df.to_csv(filename, index=False)
+    df.to_parquet(filename, index=False)
+    
     print(f"Data saved successfully to {filename}. Total samples: {len(df)}")
     return df
 
@@ -264,7 +271,7 @@ def fit_surrogate_model(df: pd.DataFrame, max_epochs=500, batch_size=1024, patie
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device.type.upper()}")
-    model = POMDPSurrogate(input_dim=X.shape[1]).to(device)
+    model = POMDPSurrogate(input_dim=X.shape[1], hidden_dim=1024, num_blocks=6).to(device)
     
     if torch.__version__ >= "2.0.0" and device.type == "cuda":
         print("Compiling model with torch.compile()...")
@@ -272,7 +279,8 @@ def fit_surrogate_model(df: pd.DataFrame, max_epochs=500, batch_size=1024, patie
     
     # Using AdamW for better weight decay generalization
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15)
+    
     
     class_weights = calculate_class_weights(df['res'].values).to(device)
     criterion_choice = nn.CrossEntropyLoss(weight=class_weights)
@@ -319,7 +327,7 @@ def fit_surrogate_model(df: pd.DataFrame, max_epochs=500, batch_size=1024, patie
                 mask = (batch_Y_choice == 0) | (batch_Y_choice == 1) | (batch_Y_choice == 4)
                 loss_rt = criterion_rt(rt_pred[mask], batch_Y_rt[mask]) if mask.sum() > 0 else 0.0
                 
-                loss = loss_choice + 5.0 * loss_rt
+                loss = loss_choice + 10.0 * loss_rt
                 val_loss += loss.item()
                 
         val_loss /= len(val_loader)
@@ -362,16 +370,16 @@ def load_surrogate(filepath: str = "pomdp_surrogate.pth") -> Tuple[POMDPSurrogat
     return model, checkpoint['X_min'], checkpoint['X_max']
 
 if __name__ == "__main__":
-    # TEST MODE
-    df_simulated = get_or_generate_dataset(n_pomdp_solves=10, filename="pomdp_dataset_test.csv")
-    surrogate_model, X_min, X_max = fit_surrogate_model(
-        df_simulated, max_epochs=3, patience=2, batch_size=128
-    )
-    save_surrogate(surrogate_model, X_min, X_max, filepath="pomdp_surrogate_test.pth")
+    # # TEST MODE
+    # df_simulated = get_or_generate_dataset(n_pomdp_solves=10, filename="pomdp_dataset_test.csv")
+    # surrogate_model, X_min, X_max = fit_surrogate_model(
+    #     df_simulated, max_epochs=3, patience=2, batch_size=128
+    # )
+    # save_surrogate(surrogate_model, X_min, X_max, filepath="pomdp_surrogate_test.pth")
 
 
-    # # FULL MODE    
-    # df_simulated = get_or_generate_dataset(n_pomdp_solves=20000, filename="pomdp_dataset_1.7M_lhs.csv")
-    # # Train deep ResNet surrogate
-    # surrogate_model, X_min, X_max = fit_surrogate_model(df_simulated, max_epochs=200, patience=20, batch_size=4096)
-    # save_surrogate(surrogate_model, X_min, X_max, filepath="pomdp_surrogate.pth")
+    # FULL MODE    
+    df_simulated = get_or_generate_dataset(n_pomdp_solves=200000, filename="pomdp_dataset_17M_lhs.parquet")
+    # Train deep ResNet surrogate
+    surrogate_model, X_min, X_max = fit_surrogate_model(df_simulated, max_epochs=500, patience=40, batch_size=4096)
+    save_surrogate(surrogate_model, X_min, X_max, filepath="pomdp_surrogate.pth")
