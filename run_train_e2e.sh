@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=SURR
+#SBATCH --job-name=T-NF
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24           # 32 CPU cores are sufficient for single-GPU training
@@ -22,16 +22,16 @@ SCRATCH_DIRECTORY=/ptmp/${USER}/${SLURM_JOBID}
 mkdir -p "${SCRATCH_DIRECTORY}"
 echo "Running in scratch directory: ${SCRATCH_DIRECTORY}"
 
+# Copy files to scratch
+cd "${SCRATCH_DIRECTORY}"
+
 # Copy files to the scratch directory
 # Note: Ensure the CSV, Python script, and 'core' folder are in the directory where you run sbatch
-cp "${SLURM_SUBMIT_DIR}/train_e2e.py" .
+cp "${SLURM_SUBMIT_DIR}/train_e2e_v2.py" .
 cp "${SLURM_SUBMIT_DIR}/train_surrogate_v2.py" .
 cp "${SLURM_SUBMIT_DIR}/pomdp_surrogate.pth" .
 cp "${SLURM_SUBMIT_DIR}/orders.csv" .
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
-
-# Copy files to scratch
-cd "${SCRATCH_DIRECTORY}"
 
 # ==========================================
 # Load the official ROCm Python environment
@@ -44,7 +44,7 @@ source ~/rocm_env/bin/activate
 
 # Run the training script
 echo ">>> Starting model training..."
-python -u train_e2e.py
+python -u train_e2e_v2.py
 
 # ==========================================
 # Copy results back to the original directory
