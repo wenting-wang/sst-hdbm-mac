@@ -1,3 +1,5 @@
+# USE SURROGATE
+# ADDITIVE HDBM
 import sys
 import os
 import ast

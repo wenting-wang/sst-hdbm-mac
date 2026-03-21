@@ -1,0 +1,17 @@
+# 1. 确保加载了超算官方的基础 Python 模块
+module purge
+module load python-waterboa/2025.06
+
+# 2. 在你的主目录下新建虚拟环境 (名字保持叫 rocm_env，省得改脚本)
+python -m venv ~/rocm_env
+
+# 3. 激活环境
+source ~/rocm_env/bin/activate
+
+# 4. 升级 pip 并安装你代码里的那些依赖包
+pip install --upgrade pip
+pip install pandas numpy scipy tqdm zuko pyarrow fastparquet matplotlib
+
+# 5. 【关键】安装纯 CPU 版的 PyTorch
+# 这个版本体积非常小，下载极快，而且不会去乱找 GPU 驱动，完美适配你的 128 核大军！
+pip install torch --index-url https://download.pytorch.org/whl/cpu

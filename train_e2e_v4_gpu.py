@@ -1,5 +1,5 @@
-# USE SURROGATE
-# MULTIPLICATIVE HDBM
+# USE REAL POMDP
+# ADDITIVE HDBM
 
 import sys
 import os
@@ -23,28 +23,24 @@ from torch.utils.data import random_split
 warnings.filterwarnings("ignore", message="Can't initialize NVML")
 
 # --- PATH RESOLUTION ---
-# Get the absolute path to the directory containing this script
 BASE_DIR = Path(__file__).resolve().parent
 
 # Ensure the core module and current directory are in the Python path
 sys.path.append(str(BASE_DIR.parent))
 sys.path.append(str(BASE_DIR))
 
-# Define robust absolute paths for dependencies
 ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
-SURROGATE_MODEL_PATH = BASE_DIR / "pomdp_surrogate.pth"
 
-# Import custom modules
-from train_surrogate_v2 import load_surrogate
 from core.hdbm_v2 import HDBM  
+from core.pomdp import POMDP
+from core import simulation
 
 # --- 1. CONFIGURATION & PRIORS ---
-# UPDATED for new HDBM (Multiplicative mechanism)
 HDBM_PARAM_RANGE = {
     "alpha_go": (0.0, 1.0),
     "alpha_stop": (0.0, 1.0),
-    "k_go": (0.0, 10.0),   
-    "gamma": (0.0, 2.0)    # Gamma is the amplification factor for the hazard
+    "k_go": (0.0, 10.0),  
+    "rho": (0.0, 1.0)
 }
 
 POMDP_PARAM_RANGE = {
@@ -57,6 +53,7 @@ FIXED_PARAMS = {"cost_time": 0.001, "cost_go_error": 1.0, "cost_go_missing": 1.0
 FREE_PARAM = list(HDBM_PARAM_RANGE.keys()) + list(POMDP_PARAM_RANGE.keys())
 PARAM_RANGE = {**HDBM_PARAM_RANGE, **POMDP_PARAM_RANGE}
 OUTCOME_MAP = {0: 'GS', 1: 'GE', 2: 'GM', 3: 'SS', 4: 'SE'}
+RES_TO_IDX = {'GS': 0, 'GE': 1, 'GM': 2, 'SS': 3, 'SE': 4} # 用于映射真实 POMDP 返回的结果
 
 # --- 1.5. MAF TARGET SCALING (LOG + MIN-MAX) ---
 _param_transformed_min = []
@@ -75,7 +72,6 @@ PARAM_TRANSFORMED_MIN = np.array(_param_transformed_min, dtype=np.float32)
 PARAM_TRANSFORMED_MAX = np.array(_param_transformed_max, dtype=np.float32)
 
 def transform_params_for_maf(params_dict: dict) -> np.ndarray:
-    """Transforms raw prior parameters to [0, 1] range for stable MAF training."""
     raw_array = []
     for k in FREE_PARAM:
         val = params_dict[k]
@@ -89,7 +85,6 @@ def transform_params_for_maf(params_dict: dict) -> np.ndarray:
     return scaled_array
 
 def inverse_transform_from_maf(scaled_tensor: torch.Tensor) -> np.ndarray:
-    """Reverts the [0, 1] scaled MAF outputs back to their original physical scales."""
     if isinstance(scaled_tensor, torch.Tensor):
         scaled_array = scaled_tensor.detach().cpu().numpy()
     else:
@@ -103,6 +98,7 @@ def inverse_transform_from_maf(scaled_tensor: torch.Tensor) -> np.ndarray:
             
     return transformed_array
 
+
 # --- 2. DATA LOADING & SAMPLING ---
 def sample_prior(n_samples: int) -> pd.DataFrame:
     samples = {k: np.random.uniform(low, high, n_samples) for k, (low, high) in PARAM_RANGE.items()}
@@ -113,7 +109,6 @@ def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.n
         df = pd.read_csv(csv_path, dtype={'order_seq': str})
         probs = df['subj_cnt'] / df['subj_cnt'].sum()
         sequences = []
-        
         for seq_str in df['order_seq']:
             seq_str = str(seq_str).strip()
             if seq_str.startswith('['):
@@ -121,58 +116,29 @@ def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.n
             else:
                 seq = [int(char) for char in seq_str if char.isdigit()]
             sequences.append(seq)
-            
         return np.array(sequences, dtype=object), probs.values
     except Exception as e:
         warnings.warn(f"Failed to load '{csv_path}'. Using random sequences. Error: {e}")
         return None, None
 
-def sample_task_sequence(sequences: np.ndarray, probs: np.ndarray, n_blocks: int = 2) -> List[int]:
-    if sequences is None:
-        return [1 if np.random.rand() < 1/6 else 0 for _ in range(180 * n_blocks)]
-    sampled_idx = np.random.choice(len(sequences), size=n_blocks, p=probs)
-    full_seq = []
-    for idx in sampled_idx:
-        full_seq.extend(sequences[idx])
-    return full_seq
+def sample_task_sequence(sequences: np.ndarray, probs: np.ndarray) -> List[int]:
+    sampled_idx = np.random.choice(len(sequences), p=probs)
+    return sequences[sampled_idx]
 
-# --- 3. SURROGATE & TASK SIMULATION ---
-def simulate_trial_surrogate(r_pred, pomdp_params, ssd, true_go_state, true_stop_state, surr_model, X_min, X_max):
-    cost_stop_error_log = np.log(pomdp_params['cost_stop_error'])
-    inv_temp_log = np.log(pomdp_params['inv_temp'])
-    go_val = 1 if true_go_state == 'right' else 0
-    stop_val = 1 if true_stop_state == 'stop' else 0
-    
-    X_raw = np.array([
-        r_pred, pomdp_params['q_d_n'], pomdp_params['q_d'],
-        pomdp_params['q_s_n'], pomdp_params['q_s'],
-        cost_stop_error_log, inv_temp_log, ssd, go_val, stop_val
-    ])
-    
-    X_scaled = (X_raw - X_min) / (X_max - X_min + 1e-8)
-    X_tensor = torch.tensor(X_scaled, dtype=torch.float32).unsqueeze(0)
-    
-    with torch.no_grad():
-        choice_logits, rt_pred_scaled = surr_model(X_tensor)
-        choice_probs = torch.softmax(choice_logits, dim=-1)
-        choice_idx = torch.distributions.Categorical(choice_probs).sample().item()
-        rt = (rt_pred_scaled.squeeze() * 40.0).item()
-        
-    return choice_idx, rt
 
+# --- 3. REAL TASK SIMULATION ---
 def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
-    params, sequences, probs, surr_model, X_min, X_max = args
-    seq_int = sample_task_sequence(sequences, probs, n_blocks=2) 
+    params, sequences, probs = args  # 【修改 2】：不需要 surrogate 了
+    seq_int = sample_task_sequence(sequences, probs) 
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     
-    # UPDATED: Initialize HDBM with new parameters and MULTIPLICATIVE fusion
     hdbm = HDBM(
         alpha_go=params['alpha_go'], 
         alpha_stop=params['alpha_stop'], 
         k_go=params['k_go'], 
-        gamma=params['gamma'],
-        fusion_type='multiplicative'
+        rho=params['rho'],
+        fusion_type='additive'
     )
     r_preds = hdbm.simu_task(seq_int, block_size=180)
 
@@ -187,10 +153,25 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
         true_stop_state = 'stop' if is_stop == 1 else 'nonstop'
         ssd = next_stop_ssd if is_stop == 1 else -1
         
-        choice_idx, rt = simulate_trial_surrogate(
-            r_pred, params, ssd, go_dir, true_stop_state, surr_model, X_min, X_max
+        # REAL POMDP
+        pomdp = POMDP(
+            rate_stop_trial=r_pred,  # 接收 HDBM 算出的实时 r_pred
+            q_d_n=params['q_d_n'],
+            q_d=params['q_d'],
+            q_s_n=params['q_s_n'],
+            q_s=params['q_s'],
+            cost_stop_error=params['cost_stop_error'],
+            inv_temp=params['inv_temp'],
+            **FIXED_PARAMS
+        )
+        # Value Iteration
+        pomdp.value_iteration_tensor()
+        
+        res_str, rt = simulation.simu_trial(
+            pomdp, true_go_state=go_dir, true_stop_state=true_stop_state, ssd=ssd, verbose=False
         )
         
+        choice_idx = RES_TO_IDX[res_str]
         actual_rt = rt if choice_idx in [0, 1, 4] else 0.0
         
         features_seq.append([
@@ -202,12 +183,10 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
         ])
         
         if is_stop == 1:
-            res_str = OUTCOME_MAP[choice_idx]
             if res_str == 'SS': next_stop_ssd = min(next_stop_ssd + 2, 34)
             elif res_str == 'SE': next_stop_ssd = max(next_stop_ssd - 2, 2)
             
     param_scaled = transform_params_for_maf(params)
-    
     return np.array(features_seq, dtype=np.float32), param_scaled
 
 # --- 4. AMORTIZED INFERENCE NETWORK ---
@@ -238,12 +217,9 @@ def evaluate_parameter_recovery(model, device, num_test=16):
     print("="*50)
     model.eval()
     
-    surr_model, X_min, X_max = load_surrogate(filepath=str(SURROGATE_MODEL_PATH))
-    surr_model.eval()
     sequences, probs = load_order_stats(ORDERS_CSV_PATH)
-    
     prior_df = sample_prior(num_test)
-    tasks = [(prior_df.iloc[i].to_dict(), sequences, probs, surr_model, X_min, X_max) for i in range(num_test)]
+    tasks = [(prior_df.iloc[i].to_dict(), sequences, probs) for i in range(num_test)]
     
     print(f"Generating {num_test} new test datasets on CPU for evaluation...")
     X_test_data, Y_test_scaled_data = [], []
@@ -263,21 +239,7 @@ def evaluate_parameter_recovery(model, device, num_test=16):
     true_original = inverse_transform_from_maf(Y_test_scaled_tensor)
     estimated_original = inverse_transform_from_maf(estimated_scaled_means)
     
-    # 1. Save to CSV
-    recovery_data = []
-    for i in range(num_test):
-        row_dict = {"subject_idx": i + 1}
-        for j, param_name in enumerate(FREE_PARAM):
-            row_dict[f"true_{param_name}"] = true_original[i, j]
-            row_dict[f"est_{param_name}"] = estimated_original[i, j]
-        recovery_data.append(row_dict)
-        
-    df_recovery = pd.DataFrame(recovery_data)
-    csv_out_path = BASE_DIR / "parameter_recovery_results.csv"
-    df_recovery.to_csv(csv_out_path, index=False)
-    print(f"Saved numerical recovery results to '{csv_out_path}'.")
-
-    # 2. Generate Scatter Plots (Dynamic grid size for 10 parameters)
+    # Generate Scatter Plots
     num_params = len(FREE_PARAM)
     cols = 5
     rows = int(np.ceil(num_params / cols))
@@ -307,46 +269,41 @@ def evaluate_parameter_recovery(model, device, num_test=16):
         ax.set_ylabel("Estimated")
         ax.grid(True, linestyle=':', alpha=0.6)
     
-    # Hide unused subplots if any
     for j in range(num_params, len(axes)):
         axes[j].set_visible(False)
         
     plt.tight_layout()
-    plot_out_path = BASE_DIR / "parameter_recovery_scatter.png"
+    plot_out_path = BASE_DIR / "parameter_recovery_scatter_real_pomdp.png"
     plt.savefig(plot_out_path, dpi=300)
     plt.close()
     print(f"Saved scatter plot matrix to '{plot_out_path}'.")
-    print("="*50 + "\n")
 
 # --- 6. MAIN TRAINING PIPELINE ---
-def train_pipeline(n_samples=50000, epochs=200, batch_size=256, patience=30):
+def train_pipeline(n_samples=2000, epochs=200, batch_size=256, patience=30):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- Training Initialization ---")
     print(f"Using device: {device.type.upper()}")
-    print(f"Base Directory: {BASE_DIR}")
     
-    surr_model, X_min, X_max = load_surrogate(filepath=str(SURROGATE_MODEL_PATH))
-    surr_model.eval()
     sequences, probs = load_order_stats(ORDERS_CSV_PATH)
     
-    # --- Data Generation & Offline Caching (Named 'multiplicative' to avoid overwriting) ---
-    dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_multiplicative.pt"
+    # --- Data Generation & Offline Caching ---
+    dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_REAL_POMDP.pt"
     
     if dataset_file.exists():
         print(f"\n[Fast Track] Found saved offline dataset '{dataset_file}'. Loading directly...")
         dataset = torch.load(dataset_file)
-        print("Dataset loaded successfully! Skipping simulation phase.")
     else:
-        print(f"\nSimulating {n_samples} training datasets (CPU Multi-threading)...")
-        print("This might take a while, but the result will be saved for future runs.")
+        print(f"\nSimulating {n_samples} training datasets with REAL POMDP...")
+        print("Using Multi-Processing to bypass GIL... This may take a while.")
         
         prior_df = sample_prior(n_samples)
-        tasks = [(prior_df.iloc[i].to_dict(), sequences, probs, surr_model, X_min, X_max) for i in range(n_samples)]
+        tasks = [(prior_df.iloc[i].to_dict(), sequences, probs) for i in range(n_samples)]
         
         X_data, Y_data = [], []
         num_workers = max(1, os.cpu_count() - 2)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
-            results = list(tqdm(executor.map(simulate_single_dataset, tasks), total=n_samples))
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            results = list(tqdm(executor.map(simulate_single_dataset, tasks), total=n_samples, mininterval=30.0, ascii=True))
             
         for x_seq, y_param in results:
             X_data.append(x_seq)
@@ -356,9 +313,10 @@ def train_pipeline(n_samples=50000, epochs=200, batch_size=256, patience=30):
         Y_tensor = torch.tensor(np.array(Y_data), dtype=torch.float32)
         
         dataset = TensorDataset(X_tensor, Y_tensor)
-        
         torch.save(dataset, dataset_file)
-        print(f"Dataset successfully saved to '{dataset_file}'. It will be loaded directly next time.")
+        print(f"Dataset successfully saved to '{dataset_file}'.")
+        
+        
 
     val_size = int(0.2 * len(dataset))
     train_size = len(dataset) - val_size
@@ -386,7 +344,6 @@ def train_pipeline(n_samples=50000, epochs=200, batch_size=256, patience=30):
             
             log_probs = model(batch_x, true_params_scaled=batch_y)
             loss = -log_probs.mean() 
-            
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
@@ -405,8 +362,9 @@ def train_pipeline(n_samples=50000, epochs=200, batch_size=256, patience=30):
                 
         avg_val_loss = val_loss / len(val_loader)
         
-        current_lr = optimizer.param_groups[0]['lr']
-        print(f"Epoch [{epoch+1:03d}/{epochs}] - LR: {current_lr:.6f} | Train NLL: {avg_train_loss:.4f} | Val NLL: {avg_val_loss:.4f}")
+        if (epoch+1) % 5 == 0 or epoch == 0:
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"Epoch [{epoch+1:03d}/{epochs}] - LR: {current_lr:.6f} | Train NLL: {avg_train_loss:.4f} | Val NLL: {avg_val_loss:.4f}")
         
         scheduler.step(avg_val_loss)
         
@@ -421,15 +379,10 @@ def train_pipeline(n_samples=50000, epochs=200, batch_size=256, patience=30):
                 break
 
     model.load_state_dict(best_model_weights)
-    model_out_path = BASE_DIR / "amortized_inference_net.pth"
+    model_out_path = BASE_DIR / "amortized_inference_net_real.pth"
     torch.save(model.state_dict(), model_out_path)
-    print(f"\nTraining Complete! Best model saved to '{model_out_path}'.")
     
     evaluate_parameter_recovery(model, device, num_test=16)
 
 if __name__ == "__main__":
-    # Test setting
-    # train_pipeline(n_samples=16, epochs=5, batch_size=8)
-
-    # HPC / Cloud scale settings
-    train_pipeline(n_samples=50000, epochs=200, batch_size=256, patience=30)
+    train_pipeline(n_samples=2000, epochs=150, batch_size=128, patience=20)
