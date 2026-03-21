@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=POMDP-Gen
+#SBATCH --job-name=GEN
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128          
@@ -38,7 +38,7 @@ source ~/rocm_env/bin/activate
 
 # Run the data generation script
 echo ">>> Starting REAL POMDP Data Generation on CPU cores..."
-python -u train_e2e_v4_cpu.py
+srun python3 -u train_e2e_v4_cpu.py
 
 # ==========================================
 # Copy results back to the original directory

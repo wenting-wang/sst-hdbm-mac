@@ -211,10 +211,31 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     return np.array(features_seq, dtype=np.float32), param_scaled
 
 # --- 4. AMORTIZED INFERENCE NETWORK ---
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, max_len: int = 500):
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        x: shape [batch_size, seq_len, embedding_dim]
+        """
+        x = x + self.pe[:, :x.size(1), :]
+        return x
+    
 class AmortizedInferenceNet(nn.Module):
     def __init__(self, trial_feature_dim=5, d_model=64, n_heads=4, n_layers=2, param_dim=10):
         super().__init__()
         self.embedding = nn.Linear(trial_feature_dim, d_model)
+        self.pos_encoder = PositionalEncoding(d_model=d_model, max_len=400)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, batch_first=True, dim_feedforward=128
         )
@@ -223,6 +244,7 @@ class AmortizedInferenceNet(nn.Module):
         
     def forward(self, x_seq, true_params_scaled=None):
         emb = self.embedding(x_seq)
+        emb = self.pos_encoder(emb)
         out_seq = self.transformer(emb)
         context = out_seq.mean(dim=1) 
         
