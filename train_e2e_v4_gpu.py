@@ -1,11 +1,11 @@
-# USE REAL POMDP
-# ADDITIVE HDBM
+# USE REAL POMDP - GPU TRAINING SCRIPT
+# ADDITIVE HDBM + POSITIONAL ENCODING + FAST EVALUATION
 
-import math
 import sys
 import os
 import ast
 import warnings
+import math
 from pathlib import Path
 from typing import Dict, Tuple, List
 import concurrent.futures
@@ -25,8 +25,6 @@ warnings.filterwarnings("ignore", message="Can't initialize NVML")
 
 # --- PATH RESOLUTION ---
 BASE_DIR = Path(__file__).resolve().parent
-
-# Ensure the core module and current directory are in the Python path
 sys.path.append(str(BASE_DIR.parent))
 sys.path.append(str(BASE_DIR))
 
@@ -54,7 +52,7 @@ FIXED_PARAMS = {"cost_time": 0.001, "cost_go_error": 1.0, "cost_go_missing": 1.0
 FREE_PARAM = list(HDBM_PARAM_RANGE.keys()) + list(POMDP_PARAM_RANGE.keys())
 PARAM_RANGE = {**HDBM_PARAM_RANGE, **POMDP_PARAM_RANGE}
 OUTCOME_MAP = {0: 'GS', 1: 'GE', 2: 'GM', 3: 'SS', 4: 'SE'}
-RES_TO_IDX = {'GS': 0, 'GE': 1, 'GM': 2, 'SS': 3, 'SE': 4} # 用于映射真实 POMDP 返回的结果
+RES_TO_IDX = {'GS': 0, 'GE': 1, 'GM': 2, 'SS': 3, 'SE': 4} 
 
 # --- 1.5. MAF TARGET SCALING (LOG + MIN-MAX) ---
 _param_transformed_min = []
@@ -99,7 +97,6 @@ def inverse_transform_from_maf(scaled_tensor: torch.Tensor) -> np.ndarray:
             
     return transformed_array
 
-
 # --- 2. DATA LOADING & SAMPLING ---
 def sample_prior(n_samples: int) -> pd.DataFrame:
     samples = {k: np.random.uniform(low, high, n_samples) for k, (low, high) in PARAM_RANGE.items()}
@@ -126,10 +123,8 @@ def sample_task_sequence(sequences: np.ndarray, probs: np.ndarray) -> List[int]:
     sampled_idx = np.random.choice(len(sequences), p=probs)
     return sequences[sampled_idx]
 
-
-# --- 3. REAL TASK SIMULATION ---
 def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
-    params, sequences, probs = args  # 【修改 2】：不需要 surrogate 了
+    params, sequences, probs = args 
     seq_int = sample_task_sequence(sequences, probs) 
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
@@ -154,9 +149,8 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
         true_stop_state = 'stop' if is_stop == 1 else 'nonstop'
         ssd = next_stop_ssd if is_stop == 1 else -1
         
-        # REAL POMDP
         pomdp = POMDP(
-            rate_stop_trial=r_pred,  # 接收 HDBM 算出的实时 r_pred
+            rate_stop_trial=r_pred,  
             q_d_n=params['q_d_n'],
             q_d=params['q_d'],
             q_s_n=params['q_s_n'],
@@ -165,7 +159,6 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
             inv_temp=params['inv_temp'],
             **FIXED_PARAMS
         )
-        # Value Iteration
         pomdp.value_iteration_tensor()
         
         res_str, rt = simulation.simu_trial(
@@ -191,6 +184,7 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     return np.array(features_seq, dtype=np.float32), param_scaled
 
 # --- 4. AMORTIZED INFERENCE NETWORK ---
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 500):
         super().__init__()
@@ -200,22 +194,19 @@ class PositionalEncoding(nn.Module):
         
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
-        
+        pe = pe.unsqueeze(0) 
         self.register_buffer('pe', pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: shape [batch_size, seq_len, embedding_dim]
-        """
         x = x + self.pe[:, :x.size(1), :]
         return x
-    
+
 class AmortizedInferenceNet(nn.Module):
     def __init__(self, trial_feature_dim=5, d_model=64, n_heads=4, n_layers=2, param_dim=10):
         super().__init__()
         self.embedding = nn.Linear(trial_feature_dim, d_model)
         self.pos_encoder = PositionalEncoding(d_model=d_model, max_len=400)
+        
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, batch_first=True, dim_feedforward=128
         )
@@ -233,10 +224,10 @@ class AmortizedInferenceNet(nn.Module):
             return dist.log_prob(true_params_scaled)
         return dist
 
-# --- 5. EVALUATION: PARAMETER RECOVERY ---
+# --- 5. EVALUATION: PARAMETER RECOVERY (FAST) ---
 def evaluate_parameter_recovery(model, device, num_test=16):
     print("\n" + "="*50)
-    print("--- Evaluating Parameter Recovery ---")
+    print("--- Evaluating Parameter Recovery (FAST MULTI-CORE) ---")
     print("="*50)
     model.eval()
     
@@ -244,10 +235,15 @@ def evaluate_parameter_recovery(model, device, num_test=16):
     prior_df = sample_prior(num_test)
     tasks = [(prior_df.iloc[i].to_dict(), sequences, probs) for i in range(num_test)]
     
-    print(f"Generating {num_test} new test datasets on CPU for evaluation...")
+    print(f"Generating {num_test} new test datasets on CPU for evaluation (Multi-processing)...")
     X_test_data, Y_test_scaled_data = [], []
-    for task in tasks:
-        x_seq, y_scaled = simulate_single_dataset(task)
+    
+    # 【修改】：启用多进程极速生成测试数据
+    num_workers = min(16, os.cpu_count() or 1)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+        results = list(tqdm(executor.map(simulate_single_dataset, tasks), total=num_test))
+        
+    for x_seq, y_scaled in results:
         X_test_data.append(x_seq)
         Y_test_scaled_data.append(y_scaled)
         
@@ -302,7 +298,7 @@ def evaluate_parameter_recovery(model, device, num_test=16):
     print(f"Saved scatter plot matrix to '{plot_out_path}'.")
 
 # --- 6. MAIN TRAINING PIPELINE ---
-def train_pipeline(n_samples=2000, epochs=200, batch_size=256, patience=30):
+def train_pipeline(n_samples=2000, epochs=500, batch_size=128, patience=40):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- Training Initialization ---")
     print(f"Using device: {device.type.upper()}")
@@ -314,7 +310,8 @@ def train_pipeline(n_samples=2000, epochs=200, batch_size=256, patience=30):
     
     if dataset_file.exists():
         print(f"\n[Fast Track] Found saved offline dataset '{dataset_file}'. Loading directly...")
-        dataset = torch.load(dataset_file)
+        # 【修改】：设置 weights_only=False，绕过 PyTorch 2.6 安全拦截
+        dataset = torch.load(dataset_file, weights_only=False)
     else:
         print(f"\nSimulating {n_samples} training datasets with REAL POMDP...")
         print("Using Multi-Processing to bypass GIL... This may take a while.")
@@ -338,8 +335,6 @@ def train_pipeline(n_samples=2000, epochs=200, batch_size=256, patience=30):
         dataset = TensorDataset(X_tensor, Y_tensor)
         torch.save(dataset, dataset_file)
         print(f"Dataset successfully saved to '{dataset_file}'.")
-        
-        
 
     val_size = int(0.2 * len(dataset))
     train_size = len(dataset) - val_size
@@ -408,4 +403,4 @@ def train_pipeline(n_samples=2000, epochs=200, batch_size=256, patience=30):
     evaluate_parameter_recovery(model, device, num_test=16)
 
 if __name__ == "__main__":
-    train_pipeline(n_samples=2000, epochs=150, batch_size=128, patience=20)
+    train_pipeline(n_samples=2000, epochs=500, batch_size=128, patience=40)
