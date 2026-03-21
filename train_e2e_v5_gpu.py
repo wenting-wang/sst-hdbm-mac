@@ -35,10 +35,14 @@ from core.pomdp import POMDP
 from core import simulation
 
 # --- 1. CONFIGURATION & PRIORS (POMDP FROZEN) ---
+# HDBM_PARAM_RANGE = {
+#     "alpha_go": (0.0, 1.0),
+#     "alpha_stop": (0.0, 1.0),
+#     "k_go": (0.0, 10.0),  
+#     "rho": (0.0, 1.0)
+# }
 HDBM_PARAM_RANGE = {
-    "alpha_go": (0.0, 1.0),
-    "alpha_stop": (0.0, 1.0),
-    "k_go": (0.0, 10.0),  
+    "alpha": (0.0, 1.0),
     "rho": (0.0, 1.0)
 }
 
@@ -108,13 +112,22 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     
+    # hdbm = HDBM(
+    #     alpha_go=params['alpha_go'], 
+    #     alpha_stop=params['alpha_stop'], 
+    #     k_go=params['k_go'], 
+    #     rho=params['rho'],
+    #     fusion_type='additive'
+    # )
+    
     hdbm = HDBM(
-        alpha_go=params['alpha_go'], 
-        alpha_stop=params['alpha_stop'], 
-        k_go=params['k_go'], 
+        alpha_go=params['alpha'],      
+        alpha_stop=params['alpha'],     
+        k_go=1.0,                       
         rho=params['rho'],
         fusion_type='additive'
     )
+    
     r_preds = hdbm.simu_task(seq_int, block_size=180)
 
     next_stop_ssd = 2
@@ -128,7 +141,6 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
         true_stop_state = 'stop' if is_stop == 1 else 'nonstop'
         ssd = next_stop_ssd if is_stop == 1 else -1
         
-        # 【关键修改】：POMDP 参数全写死
         pomdp = POMDP(
             rate_stop_trial=r_pred,  
             q_d_n=0.518,
