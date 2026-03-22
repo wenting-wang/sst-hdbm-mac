@@ -41,11 +41,16 @@ from core import simulation
 #     "k_go": (0.0, 10.0),  
 #     "rho": (0.0, 1.0)
 # }
+
+# HDBM_PARAM_RANGE = {
+#     "alpha": (0.0, 1.0),
+#     "rho": (0.0, 1.0)
+# }
+
 HDBM_PARAM_RANGE = {
-    "alpha": (0.0, 1.0),
+    "k_go": (0.0, 10.0),
     "rho": (0.0, 1.0)
 }
-
 FIXED_PARAMS = {"cost_time": 0.001, "cost_go_error": 1.0, "cost_go_missing": 1.0}
 
 FREE_PARAM = list(HDBM_PARAM_RANGE.keys())
@@ -120,10 +125,18 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     #     fusion_type='additive'
     # )
     
+    # hdbm = HDBM(
+    #     alpha_go=params['alpha'],       
+    #     alpha_stop=params['alpha'],     
+    #     k_go=1.0,                      
+    #     rho=params['rho'],
+    #     fusion_type='additive'
+    # )
+    
     hdbm = HDBM(
-        alpha_go=params['alpha'],      
-        alpha_stop=params['alpha'],     
-        k_go=1.0,                       
+        alpha_go=0.85,     
+        alpha_stop=0.85,   
+        k_go=params['k_go'], 
         rho=params['rho'],
         fusion_type='additive'
     )
