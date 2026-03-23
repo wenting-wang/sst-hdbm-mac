@@ -97,12 +97,20 @@ def sample_prior(n_samples: int) -> pd.DataFrame:
     # 2. 对 POMDP 底层参数进行 Empirical Informative Prior 采样（软固定）
     sampled_means = DF_MEANS.sample(n=n_samples, replace=True).reset_index(drop=True)
     for p in POMDP_PARAM_RANGE.keys():
-        # 在抽到的真实人类参数基础上，加上一点高斯噪声防止过拟合
+        # 在抽到的真实人类参数基础上，加上一点高斯噪声
         noise = np.random.normal(0, DF_STDS[p] * 0.5, n_samples) 
         val = sampled_means[p].values + noise
-        low, high = POMDP_PARAM_RANGE[p]
-        samples[p] = np.clip(val, low, high)
         
+        # 提取我们在开头设置的上限，防止 MAF 网络归一化时越界爆错
+        _, high = POMDP_PARAM_RANGE[p] 
+        
+        if p.startswith('q_'):
+            # 【概率类参数】：限制在 0 和 1 之间（留 1e-4 安全边距防除零）
+            samples[p] = np.clip(val, 1e-4, 1.0 - 1e-4)
+        else:
+            # 【非概率参数】(cost_stop_error, inv_temp 等)：大于 0 即可
+            samples[p] = np.clip(val, 1e-4, high)
+            
     return pd.DataFrame(samples)
 
 def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.ndarray]:
