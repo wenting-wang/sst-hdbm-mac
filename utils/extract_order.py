@@ -15,7 +15,7 @@ LIST_FILE = BASE_DIR / 'data' / 'clinical_behavior.csv'
 # Data root directory 
 DATA_ROOT = Path('/Users/w/Desktop/data/sst_valid_base/')
 
-OUTPUT_CSV = BASE_DIR / 'data' / 'seq_orders.csv'
+OUTPUT_CSV = BASE_DIR / 'data' / 'orders.csv'
 # ===============================================
 
 def get_file_signature(file_path: Path) -> str | None:
