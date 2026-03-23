@@ -185,7 +185,7 @@ def main():
         h_vals = get_dw_hazard(q_f, beta_f, x_plot)
         ax1.plot(x_plot, h_vals, color='#b51f1f', alpha=0.3, linewidth=0.8)
     
-    line_haz, = ax1.plot(x_plot, df_global_stats['fitted_hazard'], color="#b51f1f", linewidth=2.0, label='Fitted Hazard')
+    line_haz, = ax1.plot(x_plot, df_global_stats['fitted_hazard'], color="#b51f1f", linewidth=1.5, label='Fitted Hazard')
     mask = (df_global_stats['n_at_risk'] > 0) & (df_global_stats['go_run_length'] <= 20)
     err_emp = ax1.errorbar(df_global_stats[mask]['go_run_length'], df_global_stats[mask]['empirical_hazard'], 
                            yerr=df_global_stats[mask]['se'], fmt='o', color='black', 

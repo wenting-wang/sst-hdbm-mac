@@ -8,7 +8,7 @@ class HDBM:
     learning/forgetting rates for Go and Stop trials, and flexible fusion rules.
     """
 
-    def __init__(self, alpha_go=0.7, alpha_stop=0.8, k_go=5.0, rho=0.6, gamma=0.8, 
+    def __init__(self, alpha_go=0.75, alpha_stop=0.75, k_go=5.0, rho=0.6, gamma=0.8, 
                  fusion_type='additive', a0=5.0, b0=1.0):
         """
         Initialize the HDBM model with free parameters.
