@@ -183,7 +183,7 @@ def main():
     ax1 = axes1[1]
     for oid, (q_f, beta_f) in order_fits.items():
         h_vals = get_dw_hazard(q_f, beta_f, x_plot)
-        ax1.plot(x_plot, h_vals, color='#b51f1f', alpha=0.15, linewidth=0.8)
+        ax1.plot(x_plot, h_vals, color='#b51f1f', alpha=0.3, linewidth=0.8)
     
     line_haz, = ax1.plot(x_plot, df_global_stats['fitted_hazard'], color="#b51f1f", linewidth=2.0, label='Fitted Hazard')
     mask = (df_global_stats['n_at_risk'] > 0) & (df_global_stats['go_run_length'] <= 20)
