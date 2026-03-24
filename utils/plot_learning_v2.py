@@ -36,7 +36,7 @@ def main():
     # seq = [int(char) for char in seq]
     
     # Initialize model
-    model = HDBM(alpha_go=0.7, alpha_stop=0.8, k_go=1.0, a0=5.0, b0=1.0)
+    model = HDBM(alpha_go=0.85, alpha_stop=0.85, k_go=1, a0=5.0, b0=1.0)
     
     # Track the (a, b) parameters
     a, b = model.a0, model.b0

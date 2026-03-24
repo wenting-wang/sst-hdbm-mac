@@ -88,13 +88,26 @@ except Exception:
     DF_MEANS, DF_STDS = None, None
 
 def sample_prior(n_samples: int) -> pd.DataFrame:
+    # 1. 对 HDBM 认知参数进行 Uniform 采样（全空间探索）
     samples = {k: np.random.uniform(low, high, n_samples) for k, (low, high) in HDBM_PARAM_RANGE.items()}
+    
+    # 2. 对 POMDP 底层参数进行 Empirical Informative Prior 采样（软固定）
     sampled_means = DF_MEANS.sample(n=n_samples, replace=True).reset_index(drop=True)
     for p in POMDP_PARAM_RANGE.keys():
+        # 在抽到的真实人类参数基础上，加上一点高斯噪声
         noise = np.random.normal(0, DF_STDS[p] * 0.5, n_samples) 
         val = sampled_means[p].values + noise
-        low, high = POMDP_PARAM_RANGE[p]
-        samples[p] = np.clip(val, low, high)
+        
+        # 提取我们在开头设置的上限，防止 MAF 网络归一化时越界爆错
+        _, high = POMDP_PARAM_RANGE[p] 
+        
+        if p.startswith('q_'):
+            # 【概率类参数】：限制在 0 和 1 之间（留 1e-4 安全边距防除零）
+            samples[p] = np.clip(val, 1e-4, 1.0 - 1e-4)
+        else:
+            # 【非概率参数】(cost_stop_error, inv_temp 等)：大于 0 即可
+            samples[p] = np.clip(val, 1e-4, high)
+            
     return pd.DataFrame(samples)
 
 def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.ndarray]:
@@ -237,90 +250,119 @@ def evaluate_parameter_recovery(model, device, num_test=64):
     plt.close()
     print(f"Saved scatter plot matrix to '{plot_out_path}'.")
 
-# --- 6. MAIN TRAINING PIPELINE ---
+# # --- 6. MAIN TRAINING PIPELINE ---
+# def train_pipeline(n_samples=20000, epochs=500, batch_size=256, patience=50):
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     print(f"--- Deep Amortized Inference Initialization ---")
+#     print(f"Using device: {device.type.upper()}")
+    
+#     # dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_REAL_POMDP.pt"
+#     # if dataset_file.exists():
+#     #     print(f"\n[Fast Track] Loading {n_samples} Empirical Prior dataset...")
+#     #     dataset = torch.load(dataset_file, weights_only=False)
+#     # else:
+#     #     print(f"\n[ERROR] Dataset '{dataset_file}' not found! Run CPU generation first.")
+#     #     sys.exit(1)
+    
+#     dataset_file_1 = BASE_DIR / "e2e_dataset_10000_part1.pt"
+#     dataset_file_2 = BASE_DIR / "e2e_dataset_10000_part2.pt"
+    
+#     if dataset_file_1.exists() and dataset_file_2.exists():
+#         print(f"\n[Fast Track] Found two dataset parts. Loading and merging...")
+#         d1 = torch.load(dataset_file_1, weights_only=False)
+#         d2 = torch.load(dataset_file_2, weights_only=False)
+        
+#         X_all = torch.cat([d1.tensors[0], d2.tensors[0]], dim=0)
+#         Y_all = torch.cat([d1.tensors[1], d2.tensors[1]], dim=0)
+        
+#         dataset = TensorDataset(X_all, Y_all)
+#         print(f"Successfully merged! Total dataset size: {len(dataset)}")
+#     else:
+#         print(f"\n[ERROR] Dataset parts not found! Please run CPU generation scripts first.")
+#         sys.exit(1)
+    
+#     val_size = int(0.2 * len(dataset))
+#     train_dataset, val_dataset = random_split(dataset, [len(dataset) - val_size, val_size])
+#     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+#     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    
+#     model = AmortizedInferenceNet(param_dim=len(FREE_PARAM)).to(device)
+#     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+#     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15)
+    
+#     best_val_loss = float('inf')
+#     best_model_weights = copy.deepcopy(model.state_dict())
+#     epochs_no_improve = 0
+    
+#     print(f"\n--- Starting Deep Training Loop ---")
+#     for epoch in range(epochs):
+#         model.train()
+#         train_loss = 0.0
+#         for batch_x, batch_y in train_loader:
+#             batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+#             optimizer.zero_grad()
+#             loss = -model(batch_x, true_params_scaled=batch_y).mean()
+#             loss.backward()
+#             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+#             optimizer.step()
+#             train_loss += loss.item()
+            
+#         avg_train_loss, avg_val_loss = train_loss / len(train_loader), 0.0
+        
+#         model.eval()
+#         with torch.no_grad():
+#             for batch_x, batch_y in val_loader:
+#                 avg_val_loss += -model(batch_x.to(device), true_params_scaled=batch_y.to(device)).mean().item()
+#         avg_val_loss /= len(val_loader)
+        
+#         if (epoch+1) % 5 == 0 or epoch == 0:
+#             print(f"Epoch [{epoch+1:03d}/{epochs}] | LR: {optimizer.param_groups[0]['lr']:.6f} | Train NLL: {avg_train_loss:.4f} | Val NLL: {avg_val_loss:.4f}")
+        
+#         scheduler.step(avg_val_loss)
+#         if avg_val_loss < best_val_loss:
+#             best_val_loss = avg_val_loss
+#             best_model_weights = copy.deepcopy(model.state_dict())
+#             epochs_no_improve = 0
+#         else:
+#             epochs_no_improve += 1
+#             if epochs_no_improve >= patience:
+#                 print(f"\nEarly stopping at epoch {epoch+1}! Best Val Loss: {best_val_loss:.4f}")
+#                 break
+
+#     model.load_state_dict(best_model_weights)
+#     torch.save(model.state_dict(), BASE_DIR / "amortized_inference_net_DEEP_8PARAMS.pth")
+#     evaluate_parameter_recovery(model, device, num_test=64)
+
+# if __name__ == "__main__":
+#     train_pipeline(n_samples=20000, epochs=500, batch_size=256, patience=50)
+
+# --- 6. MAIN TRAINING PIPELINE (MODIFIED FOR PLOTTING ONLY) ---
 def train_pipeline(n_samples=20000, epochs=500, batch_size=256, patience=50):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"--- Deep Amortized Inference Initialization ---")
+    print(f"--- Fast Track Plotting Mode ---")
     print(f"Using device: {device.type.upper()}")
     
-    # dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_REAL_POMDP.pt"
-    # if dataset_file.exists():
-    #     print(f"\n[Fast Track] Loading {n_samples} Empirical Prior dataset...")
-    #     dataset = torch.load(dataset_file, weights_only=False)
-    # else:
-    #     print(f"\n[ERROR] Dataset '{dataset_file}' not found! Run CPU generation first.")
-    #     sys.exit(1)
-    
-    # 在 train_e2e_v7_gpu.py 的 train_pipeline 函数里：
-    dataset_file_1 = BASE_DIR / "e2e_dataset_10000_part1.pt"
-    dataset_file_2 = BASE_DIR / "e2e_dataset_10000_part2.pt"
-    
-    if dataset_file_1.exists() and dataset_file_2.exists():
-        print(f"\n[Fast Track] Found two dataset parts. Loading and merging...")
-        d1 = torch.load(dataset_file_1, weights_only=False)
-        d2 = torch.load(dataset_file_2, weights_only=False)
-        
-        # 将张量在第 0 维度（样本维度）直接拼接
-        X_all = torch.cat([d1.tensors[0], d2.tensors[0]], dim=0)
-        Y_all = torch.cat([d1.tensors[1], d2.tensors[1]], dim=0)
-        
-        dataset = TensorDataset(X_all, Y_all)
-        print(f"Successfully merged! Total dataset size: {len(dataset)}")
-    else:
-        print(f"\n[ERROR] Dataset parts not found! Please run CPU generation scripts first.")
+    # 1. 确认能读到 CSV，防止再次报错
+    if DF_MEANS is None:
+        print("\n[ERROR] 依然没有读到 params_posteriors.csv！请确保它和本脚本在同一个文件夹！")
         sys.exit(1)
-    
-    val_size = int(0.2 * len(dataset))
-    train_dataset, val_dataset = random_split(dataset, [len(dataset) - val_size, val_size])
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    
+        
+    # 2. 初始化网络结构
+    print(f"Initializing Amortized Inference Network...")
     model = AmortizedInferenceNet(param_dim=len(FREE_PARAM)).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15)
     
-    best_val_loss = float('inf')
-    best_model_weights = copy.deepcopy(model.state_dict())
-    epochs_no_improve = 0
-    
-    print(f"\n--- Starting Deep Training Loop ---")
-    for epoch in range(epochs):
-        model.train()
-        train_loss = 0.0
-        for batch_x, batch_y in train_loader:
-            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
-            optimizer.zero_grad()
-            loss = -model(batch_x, true_params_scaled=batch_y).mean()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-            optimizer.step()
-            train_loss += loss.item()
-            
-        avg_train_loss, avg_val_loss = train_loss / len(train_loader), 0.0
+    # 3. 直接加载刚才训练好的神仙权重
+    model_path = BASE_DIR / "amortized_inference_net_DEEP_8PARAMS.pth"
+    if model_path.exists():
+        print(f"Loading trained weights from {model_path}...")
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    else:
+        print(f"[ERROR] 找不到模型权重文件 {model_path}！")
+        sys.exit(1)
         
-        model.eval()
-        with torch.no_grad():
-            for batch_x, batch_y in val_loader:
-                avg_val_loss += -model(batch_x.to(device), true_params_scaled=batch_y.to(device)).mean().item()
-        avg_val_loss /= len(val_loader)
-        
-        if (epoch+1) % 5 == 0 or epoch == 0:
-            print(f"Epoch [{epoch+1:03d}/{epochs}] | LR: {optimizer.param_groups[0]['lr']:.6f} | Train NLL: {avg_train_loss:.4f} | Val NLL: {avg_val_loss:.4f}")
-        
-        scheduler.step(avg_val_loss)
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_model_weights = copy.deepcopy(model.state_dict())
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= patience:
-                print(f"\nEarly stopping at epoch {epoch+1}! Best Val Loss: {best_val_loss:.4f}")
-                break
-
-    model.load_state_dict(best_model_weights)
-    torch.save(model.state_dict(), BASE_DIR / "amortized_inference_net_DEEP_8PARAMS.pth")
+    # 4. 直接进入画图评估阶段！
     evaluate_parameter_recovery(model, device, num_test=64)
 
 if __name__ == "__main__":
-    train_pipeline(n_samples=20000, epochs=500, batch_size=256, patience=50)
+    # 直接调用画图，不需要给 epochs 等参数了
+    train_pipeline()

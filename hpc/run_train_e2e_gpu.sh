@@ -6,7 +6,7 @@
 #SBATCH --mem=110000                 # Request 128GB RAM to prevent OOM when Pandas loads the dataset
 #SBATCH --gres=gpu:1                 # Request 1 MI300A APU/GPU
 #SBATCH --time=24:00:00
-#SBATCH --output=slurm_surrogate-%j.out
+#SBATCH --output=slurm_inf-%j.out
 #SBATCH --mail-type=END,FAIL         
 #SBATCH --mail-user=wenting.wang.cd@outlook.com
 
@@ -31,6 +31,8 @@ cp "${SLURM_SUBMIT_DIR}/train_e2e_v7_gpu.py" .
 cp "${SLURM_SUBMIT_DIR}/e2e_dataset_10000_part1.pt" .
 cp "${SLURM_SUBMIT_DIR}/e2e_dataset_10000_part2.pt" .
 cp "${SLURM_SUBMIT_DIR}/orders.csv" .
+cp "${SLURM_SUBMIT_DIR}/pomdp_params_prior.csv" .
+cp "${SLURM_SUBMIT_DIR}/amortized_inference_net_DEEP_8PARAMS.pth" .
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
 
 # ==========================================
