@@ -36,7 +36,7 @@ from core import simulation
 
 # --- 1. CONFIGURATION & PRIORS (8 FREE PARAMS) ---
 HDBM_PARAM_RANGE = {
-    "k_go": (0.0, 10.0),  
+    "k_go": (0.0, 4.0),  
     "rho": (0.0, 1.0)
 }
 
