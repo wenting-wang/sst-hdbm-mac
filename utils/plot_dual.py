@@ -36,12 +36,12 @@ PANEL_LABEL_SIZE = 12
 def main():
     print(">>> 1. Initializing Sequence and Parameters...")
     # Sequence: 3 Go, 1 Stop, 10 Go, 1 Stop, 20 Go, 1 Stop (36 trials total)
-    seq = [0]*3 + [1] + [0]*10 + [1] + [0]*20
+    seq = [0]*20 + [1]
     trials = np.arange(1, len(seq) + 1)
     
     # Define our 2x2 factorial parameter grid
-    eta_vals = [0.5, 4.0]  
-    rho_vals = [0.2, 0.8]   
+    eta_vals = [0.1, 10.0]  
+    rho_vals = [0.1, 0.9]   
     
     print(">>> 2. Generating the 2x2 Grid Plot...")
     fig, axes = plt.subplots(2, 2, figsize=(7.5, 5.5))
