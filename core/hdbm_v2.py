@@ -71,7 +71,11 @@ class HDBM:
 
             # 2. Pre-trial: Fuse decision signals based on chosen mechanism
             if self.fusion_type == 'additive':
-                r_raw = Er + self.rho * h
+                r_raw = (1-self.rho) *Er + self.rho * h
+                
+                
+                
+                
             elif self.fusion_type == 'multiplicative':
                 r_raw = Er * (1 + self.gamma * h)
             else:

@@ -24,8 +24,8 @@ plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'sans-serif']
 plt.rcParams['axes.linewidth'] = 0.8
 plt.rcParams['xtick.major.width'] = 0.8
 plt.rcParams['ytick.major.width'] = 0.8
-plt.rcParams['xtick.major.size'] = 4.0
-plt.rcParams['ytick.major.size'] = 4.0
+plt.rcParams['xtick.major.size'] = 10.0
+plt.rcParams['ytick.major.size'] = 10.0
 
 LABEL_SIZE = 10       
 TICK_SIZE = 8         
@@ -40,7 +40,7 @@ def main():
     trials = np.arange(1, len(seq) + 1)
     
     # Define our 2x2 factorial parameter grid
-    eta_vals = [0.1, 10.0]  
+    eta_vals = [0.1, 12.0]  
     rho_vals = [0.1, 0.9]   
     
     print(">>> 2. Generating the 2x2 Grid Plot...")
