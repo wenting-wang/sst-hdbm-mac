@@ -40,8 +40,8 @@ def main():
     trials = np.arange(1, len(seq) + 1)
     
     # Define our 2x2 factorial parameter grid
-    eta_vals = [0.1, 12.0]  
-    rho_vals = [0.1, 0.9]   
+    eta_vals = [0.2, 5.0]  
+    rho_vals = [0.2, 0.6]   
     
     print(">>> 2. Generating the 2x2 Grid Plot...")
     fig, axes = plt.subplots(2, 2, figsize=(7.5, 5.5))
