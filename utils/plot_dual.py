@@ -10,17 +10,17 @@ sys.path.append(str(BASE_DIR))
 
 # Import the HDBM model from the core directory
 try:
-    from core.hdbm_v2 import HDBM
+    from core.hdbm_v4 import HDBM
 except ImportError:
-    print("Error: Could not import HDBM. Ensure 'core/hdbm_v2.py' exists.")
+    print("Error: Could not import HDBM. Ensure 'core/hdbm_v4.py' exists.")
     sys.exit()
 
 # Output Plot
 OUTPUT_IMG = BASE_DIR / 'outputs' / 'dual.png'
 
 # --- Formatting to match Nature/PLOS style ---
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'sans-serif']
+# plt.rcParams['font.family'] = 'sans-serif'
+# plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'sans-serif']
 plt.rcParams['axes.linewidth'] = 0.8
 plt.rcParams['xtick.major.width'] = 0.8
 plt.rcParams['ytick.major.width'] = 0.8
@@ -40,7 +40,7 @@ def main():
     trials = np.arange(1, len(seq) + 1)
     
     # Define our 2x2 factorial parameter grid
-    eta_vals = [0.2, 5.0]  
+    eta_vals = [4, 10.0]  
     rho_vals = [0.2, 0.6]   
     
     print(">>> 2. Generating the 2x2 Grid Plot...")
@@ -61,8 +61,8 @@ def main():
             ax = axes[i, j]
             
             # Initialize model with current eta (k_go) and rho
-            model = HDBM(alpha_go=0.85, alpha_stop=0.85, k_go=eta, rho=rho, 
-                         fusion_type='additive', a0=5.0, b0=1.0)
+            model = HDBM(alpha_go=0.75, alpha_stop=0.75, k_go=eta, rho=rho, 
+                         fusion_type='additive_1', a0=5.0, b0=1.0)
             
             # Run simulation requesting detailed trajectories
             r_traj, Er_traj, h_traj = model.simu_task(seq, return_details=True)

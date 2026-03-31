@@ -8,24 +8,24 @@ class HDBM:
     learning/forgetting rates for Go and Stop trials, and flexible fusion rules.
     """
 
-    def __init__(self, alpha_go=0.75, alpha_stop=0.75, k_go=5.0, rho=0.6, gamma=0.8, 
-                 fusion_type='additive', a0=5.0, b0=1.0):
+    def __init__(self, alpha_go=0.85, alpha_stop=0.85, eta=5.0, rho=0.6, gamma=0.8, 
+                 fusion_type='additive_2', a0=5.0, b0=1.0):
         """
         Initialize the HDBM model with free parameters.
         
         Parameters:
             alpha_go (float): Memory retention rate after Go trials.
             alpha_stop (float): Cognitive reset (retention) rate after Stop trials.
-            k_go (float): Habitual impulse increment added after each Go trial.
+            eta (float): Habitual impulse increment added after each Go trial.
             rho (float): Weight of the hazard function in 'additive' fusion.
             gamma (float): Amplification factor of the hazard in 'multiplicative' fusion.
-            fusion_type (str): 'additive' or 'multiplicative'.
+            fusion_type (str): 'additive_1', 'additive_2', or 'multiplicative'.
             a0 (float): Initial prior parameter alpha (representing Go counts).
             b0 (float): Initial prior parameter beta (representing Stop counts).
         """
         self.alpha_go = alpha_go
         self.alpha_stop = alpha_stop
-        self.k_go = k_go
+        self.eta = eta
         self.rho = rho
         self.gamma = gamma
         self.fusion_type = fusion_type
@@ -77,7 +77,7 @@ class HDBM:
             elif self.fusion_type == 'multiplicative':
                 r_raw = Er * (1 + self.gamma * h)
             else:
-                raise ValueError("fusion_type must be either 'additive' or 'multiplicative'")
+                raise ValueError("fusion_type must be either 'additive_1', 'additive_2', or 'multiplicative'")
 
             # POMDP safe clipping
             r_final = np.clip(r_raw, 0, 1-1e-4)
@@ -89,7 +89,7 @@ class HDBM:
 
             # 3. Post-trial: Physical stimulus appears, update internal parameters
             if trial == 0:  # Go Trial
-                a = (1 - self.alpha_go) * self.a0 + self.alpha_go * (a + self.k_go)
+                a = (1 - self.alpha_go) * self.a0 + self.alpha_go * (a + self.eta)
                 b = (1 - self.alpha_go) * self.b0 + self.alpha_go * (b + 0)
                 run_length += 1
             else:           # Stop Trial
@@ -108,51 +108,3 @@ class HDBM:
         
         return np.array(r_traj)
 
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-# 假设 HDBM 类已经定义在上方
-
-if __name__ == "__main__":
-    # 1. 生成测试序列: 360 trials, 大约 25% Stop (1), 75% Go (0)
-    np.random.seed(42) # 固定随机种子以保证结果可复现
-    sequence = np.random.choice([0, 1], size=360, p=[0.75, 0.25])
-    
-    # 2. 初始化模型
-    model = HDBM(a0=5.0, b0=1.0, fusion_type='additive')
-    
-    # 3. 运行带有 block_size=180 的仿真
-    r_traj, Er_traj, h_traj = model.simu_task(sequence, block_size=180, return_details=True)
-    
-    # 4. 打印 Block 交界处的数据验证 (Python 是 0-index)
-    # Index 179 -> Block 1 的最后一个 trial (Trial 180)
-    # Index 180 -> Block 2 的第一个 trial (Trial 181)
-    print("--- Block 交界处数值检查 ---")
-    print(f"Trial 180 (Block 1 结束) -> Er: {Er_traj[179]:.4f}, h: {h_traj[179]:.4f}")
-    print(f"Trial 181 (Block 2 开始) -> Er: {Er_traj[180]:.4f}, h: {h_traj[180]:.4f}")
-    print(f"Prior 理论值应为 b0/(a0+b0) = 1/(5+1) = {1/6:.4f}")
-    print("----------------------------\n")
-
-    # 5. 可视化轨迹
-    plt.figure(figsize=(14, 6))
-    
-    # 画出三条轨迹
-    plt.plot(r_traj, label='Final Expectation (r)', color='black', linewidth=2)
-    plt.plot(Er_traj, label='Subjective Prior (Er)', color='blue', alpha=0.7)
-    plt.plot(h_traj, label='Hazard Function (h)', color='red', alpha=0.5, linestyle='--')
-    
-    # 画出 Block 分界线
-    plt.axvline(x=179.5, color='gray', linestyle=':', linewidth=2, label='Block Boundary')
-    
-    # 装饰图表
-    plt.title('HDBM Trajectories across 2 Blocks (360 Trials)')
-    plt.xlabel('Trial Number')
-    plt.ylabel('Probability / Expectation')
-    plt.ylim(-0.05, 1.05)
-    plt.legend(loc='upper right')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    
-    plt.show()

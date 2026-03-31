@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
-FIXED_PARAMS_PATH = DATA_DIR / "params_posterior.csv"
+FIXED_PARAMS_PATH = DATA_DIR / "pomdp_params_prior.csv"
 
 df_raw = pd.read_csv(FIXED_PARAMS_PATH)
 df = df_raw[['index', 'mean', 'subject_id', 'subject_year']]
@@ -16,5 +16,5 @@ df = df.pivot_table(
 df.columns.name = None
 
 # save
-OUT_PATH = DATA_DIR / "params_pomdp.csv"
+OUT_PATH = DATA_DIR / "pomdp_prior.csv"
 df.to_csv(OUT_PATH, index=False)

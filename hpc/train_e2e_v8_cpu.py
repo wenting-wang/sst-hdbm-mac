@@ -1,5 +1,5 @@
 # USE REAL POMDP - CPU DATA GENERATION SCRIPT
-# FULL 8-PARAMETER E2E MODEL (2 HDBM + 6 POMDP)
+# FULL 8-PARAMETER E2E MODEL (2 HDBM + 6 POMDP) WITH JOINT FINE-TUNING PRIORS
 
 import sys
 import os
@@ -17,26 +17,44 @@ from torch.utils.data import TensorDataset
 
 warnings.filterwarnings("ignore", message="Can't initialize NVML")
 
+# =============================================================================
+# GLOBAL CONFIGURATION FOR CLUSTER RUNS
+# =============================================================================
+# Options: 'additive_1', 'additive_2', 'multiplicative'
+FUSION_MODE = 'additive_2'  
+
+# Define free parameters for HDBM (using 'eta' throughout)
+if FUSION_MODE in ['additive_1', 'additive_2']:
+    HDBM_PARAM_RANGE = {
+        "eta": (0.0, 10.0),   
+        "rho": (0.0, 1.0)
+    }
+elif FUSION_MODE == 'multiplicative':
+    HDBM_PARAM_RANGE = {
+        "eta": (0.0, 10.0),   
+        "gamma": (0.0, 5.0)  
+    }
+else:
+    raise ValueError(f"Unknown FUSION_MODE: {FUSION_MODE}")
+
+# =============================================================================
+
 # --- PATH RESOLUTION ---
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR.parent))
 sys.path.append(str(BASE_DIR))
 
 ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
+PRIOR_CSV_PATH = BASE_DIR / "pomdp_prior.csv"
 
 from core.hdbm_v4 import HDBM  
 from core.pomdp import POMDP
 from core import simulation
 
 # --- 1. CONFIGURATION & PRIORS (8 FREE PARAMS) ---
-HDBM_PARAM_RANGE = {
-    "k_go": (0.0, 4.0),  
-    "rho": (0.0, 1.0)
-}
-
 POMDP_PARAM_RANGE = {
-    "q_d_n": (0.0, 1.0), "q_d": (0.5, 1.0),
-    "q_s_n": (0.0, 1.0), "q_s": (0.5, 1.0),
+    "q_d_n": (1e-4, 0.9999), "q_d": (0.5, 0.9999),
+    "q_s_n": (1e-4, 0.9999), "q_s": (0.5, 0.9999),
     "cost_stop_error": (0.3, 2.0), "inv_temp": (10, 100)
 }
 
@@ -77,8 +95,31 @@ def transform_params_for_maf(params_dict: dict) -> np.ndarray:
     return scaled_array
 
 # --- 2. DATA LOADING & SAMPLING ---
-def sample_prior(n_samples: int) -> pd.DataFrame:
-    samples = {k: np.random.uniform(low, high, n_samples) for k, (low, high) in PARAM_RANGE.items()}
+def sample_prior(n_samples: int, prior_df: pd.DataFrame) -> pd.DataFrame:
+    samples = {}
+    
+    # 1. HDBM maintains a pure uniform distribution to explore the space
+    for k in HDBM_PARAM_RANGE.keys():
+        low, high = HDBM_PARAM_RANGE[k]
+        samples[k] = np.random.uniform(low, high, n_samples)
+        
+    # 2. POMDP introduces historical priors with Gaussian noise for fine-tuning
+    subject_indices = np.random.choice(len(prior_df), size=n_samples, replace=True)
+    base_params = prior_df.iloc[subject_indices]
+    
+    fluctuation_ratio = 0.10 
+    
+    for k in POMDP_PARAM_RANGE.keys():
+        low, high = POMDP_PARAM_RANGE[k]
+        means = base_params[k].values
+        
+        std_dev = (high - low) * fluctuation_ratio
+        noisy_vals = np.random.normal(loc=means, scale=std_dev)
+        
+        # Strictly limit max and min values to prevent out-of-bounds errors
+        clipped_vals = np.clip(noisy_vals, low, high)
+        samples[k] = clipped_vals
+        
     return pd.DataFrame(samples)
 
 def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.ndarray]:
@@ -108,13 +149,20 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     
-    hdbm = HDBM(
-        alpha_go=0.85,          
-        alpha_stop=0.85,        
-        k_go=params['k_go'],    # Free parameter: Pulling the expected lower bound, creating Speeding
-        rho=params['rho'],      # Free parameter: Controlling the hazard rate, creating Post-Stop Slowing
-        fusion_type='additive_1'
-    )
+    # Dynamically assemble HDBM parameters based on fusion mode
+    hdbm_kwargs = {
+        'alpha_go': 0.85,
+        'alpha_stop': 0.85,
+        'eta': params['eta'],
+        'fusion_type': FUSION_MODE
+    }
+    
+    if FUSION_MODE in ['additive_1', 'additive_2']:
+        hdbm_kwargs['rho'] = params['rho']
+    elif FUSION_MODE == 'multiplicative':
+        hdbm_kwargs['gamma'] = params['gamma']
+
+    hdbm = HDBM(**hdbm_kwargs)
     r_preds = hdbm.simu_task(seq_int, block_size=180)
 
     next_stop_ssd = 2
@@ -163,12 +211,20 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     return np.array(features_seq, dtype=np.float32), param_scaled
 
 def generate_data(n_samples=5000):
-    print(f"\nSimulating {n_samples} FULL E2E datasets (8 Free Params) on CPU...")
-    sequences, probs = load_order_stats(ORDERS_CSV_PATH)
-    dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_REAL_POMDP.pt"
+    print(f"\nSimulating {n_samples} FULL E2E datasets on CPU...")
+    print(f"Current Fusion Mode: {FUSION_MODE.upper()}")
     
-    prior_df = sample_prior(n_samples)
-    tasks = [(prior_df.iloc[i].to_dict(), sequences, probs) for i in range(n_samples)]
+    if not PRIOR_CSV_PATH.exists():
+        raise FileNotFoundError(f"Prior CSV not found at {PRIOR_CSV_PATH}. Please check the path.")
+    prior_df = pd.read_csv(PRIOR_CSV_PATH)
+    print(f"Loaded POMDP prior data with {len(prior_df)} subject profiles.")
+    
+    sequences, probs = load_order_stats(ORDERS_CSV_PATH)
+    
+    dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_{FUSION_MODE}_finetune.pt"
+    
+    prior_sampled_df = sample_prior(n_samples, prior_df)
+    tasks = [(prior_sampled_df.iloc[i].to_dict(), sequences, probs) for i in range(n_samples)]
     
     X_data, Y_data = [], []
     num_workers = max(1, os.cpu_count() - 2)

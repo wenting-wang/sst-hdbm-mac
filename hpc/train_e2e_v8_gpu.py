@@ -23,26 +23,45 @@ import copy
 from torch.utils.data import random_split
 warnings.filterwarnings("ignore", message="Can't initialize NVML")
 
+# =============================================================================
+# GLOBAL CONFIGURATION FOR CLUSTER RUNS
+# =============================================================================
+# Options: 'additive_1', 'additive_2', 'multiplicative'
+FUSION_MODE = 'additive_2'  
+
+# Define free parameters for HDBM
+if FUSION_MODE in ['additive_1', 'additive_2']:
+    HDBM_PARAM_RANGE = {
+        "eta": (0.0, 10.0),   
+        "rho": (0.0, 1.0)
+    }
+elif FUSION_MODE == 'multiplicative':
+    HDBM_PARAM_RANGE = {
+        "eta": (0.0, 10.0),   
+        "gamma": (0.0, 5.0)  
+    }
+else:
+    raise ValueError(f"Unknown FUSION_MODE: {FUSION_MODE}")
+
+# =============================================================================
+
 # --- PATH RESOLUTION ---
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR.parent))
 sys.path.append(str(BASE_DIR))
 
 ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
+PRIOR_CSV_PATH = BASE_DIR / "pomdp_prior.csv"
 
 from core.hdbm_v4 import HDBM  
 from core.pomdp import POMDP
 from core import simulation
 
 # --- 1. CONFIGURATION & PRIORS (8 FREE PARAMS) ---
-HDBM_PARAM_RANGE = {
-    "k_go": (0.0, 4.0),  
-    "rho": (0.0, 1.0)
-}
-
+# Added safe margins (1e-4, 0.9999) to prevent division by zero in POMDP
 POMDP_PARAM_RANGE = {
-    "q_d_n": (0.0, 1.0), "q_d": (0.5, 1.0),
-    "q_s_n": (0.0, 1.0), "q_s": (0.5, 1.0),
+    "q_d_n": (1e-4, 0.9999), "q_d": (0.5, 0.9999),
+    "q_s_n": (1e-4, 0.9999), "q_s": (0.5, 0.9999),
     "cost_stop_error": (0.3, 2.0), "inv_temp": (10, 100)
 }
 
@@ -98,8 +117,29 @@ def inverse_transform_from_maf(scaled_tensor: torch.Tensor) -> np.ndarray:
     return transformed_array
 
 # --- 2. DATA LOADING & SAMPLING ---
-def sample_prior(n_samples: int) -> pd.DataFrame:
-    samples = {k: np.random.uniform(low, high, n_samples) for k, (low, high) in PARAM_RANGE.items()}
+def sample_prior(n_samples: int, prior_df: pd.DataFrame) -> pd.DataFrame:
+    samples = {}
+    
+    # HDBM exploration sampling
+    for k in HDBM_PARAM_RANGE.keys():
+        low, high = HDBM_PARAM_RANGE[k]
+        samples[k] = np.random.uniform(low, high, n_samples)
+        
+    # POMDP prior fine-tuning sampling
+    subject_indices = np.random.choice(len(prior_df), size=n_samples, replace=True)
+    base_params = prior_df.iloc[subject_indices]
+    
+    fluctuation_ratio = 0.10 
+    
+    for k in POMDP_PARAM_RANGE.keys():
+        low, high = POMDP_PARAM_RANGE[k]
+        means = base_params[k].values
+        
+        std_dev = (high - low) * fluctuation_ratio
+        noisy_vals = np.random.normal(loc=means, scale=std_dev)
+        clipped_vals = np.clip(noisy_vals, low, high)
+        samples[k] = clipped_vals
+        
     return pd.DataFrame(samples)
 
 def load_order_stats(csv_path: Path = ORDERS_CSV_PATH) -> Tuple[np.ndarray, np.ndarray]:
@@ -129,13 +169,19 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     
-    hdbm = HDBM(
-        alpha_go=0.85,          
-        alpha_stop=0.85,        
-        k_go=params['k_go'],   
-        rho=params['rho'],      
-        fusion_type='additive_1'
-    )
+    hdbm_kwargs = {
+        'alpha_go': 0.85,
+        'alpha_stop': 0.85,
+        'eta': params['eta'],
+        'fusion_type': FUSION_MODE
+    }
+    
+    if FUSION_MODE in ['additive_1', 'additive_2']:
+        hdbm_kwargs['rho'] = params['rho']
+    elif FUSION_MODE == 'multiplicative':
+        hdbm_kwargs['gamma'] = params['gamma']
+
+    hdbm = HDBM(**hdbm_kwargs)
     r_preds = hdbm.simu_task(seq_int, block_size=180)
 
     next_stop_ssd = 2
@@ -231,9 +277,13 @@ def evaluate_parameter_recovery(model, device, num_test=32):
     print("="*50)
     model.eval()
     
+    if not PRIOR_CSV_PATH.exists():
+        raise FileNotFoundError(f"Prior CSV not found at {PRIOR_CSV_PATH}")
+    prior_df = pd.read_csv(PRIOR_CSV_PATH)
+    
     sequences, probs = load_order_stats(ORDERS_CSV_PATH)
-    prior_df = sample_prior(num_test)
-    tasks = [(prior_df.iloc[i].to_dict(), sequences, probs) for i in range(num_test)]
+    prior_sampled_df = sample_prior(num_test, prior_df)
+    tasks = [(prior_sampled_df.iloc[i].to_dict(), sequences, probs) for i in range(num_test)]
     
     print(f"Generating {num_test} new test datasets on CPU for evaluation (Multi-processing)...")
     X_test_data, Y_test_scaled_data = [], []
@@ -288,7 +338,7 @@ def evaluate_parameter_recovery(model, device, num_test=32):
         ax.grid(True, linestyle=':', alpha=0.6)
         
     plt.tight_layout()
-    plot_out_path = BASE_DIR / "parameter_recovery_scatter_FULL_8PARAMS.png"
+    plot_out_path = BASE_DIR / f"parameter_recovery_{FUSION_MODE}_finetune.png"
     plt.savefig(plot_out_path, dpi=300)
     plt.close()
     print(f"Saved scatter plot matrix to '{plot_out_path}'.")
@@ -297,15 +347,16 @@ def evaluate_parameter_recovery(model, device, num_test=32):
 def train_pipeline(n_samples=5000, epochs=300, batch_size=128, patience=40):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- Training Initialization ---")
+    print(f"Current Fusion Mode: {FUSION_MODE.upper()}")
     print(f"Using device: {device.type.upper()}")
     print(f"Fitting {len(FREE_PARAM)} Parameters: {FREE_PARAM}")
     
     sequences, probs = load_order_stats(ORDERS_CSV_PATH)
     
-    dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_REAL_POMDP.pt"
+    dataset_file = BASE_DIR / f"e2e_dataset_{n_samples}_{FUSION_MODE}_finetune.pt"
     
     if dataset_file.exists():
-        print(f"\n[Fast Track] Found saved offline dataset '{dataset_file}'. Loading directly...")
+        print(f"\nFound saved offline dataset '{dataset_file}'. Loading directly...")
         dataset = torch.load(dataset_file, weights_only=False)
     else:
         print(f"\n[ERROR] Dataset '{dataset_file}' not found! Please run CPU generation script first.")
@@ -372,7 +423,7 @@ def train_pipeline(n_samples=5000, epochs=300, batch_size=128, patience=40):
                 break
 
     model.load_state_dict(best_model_weights)
-    model_out_path = BASE_DIR / "amortized_inference_net_FULL_8PARAMS.pth"
+    model_out_path = BASE_DIR / f"amortized_inference_net_{FUSION_MODE}_finetune.pth"
     torch.save(model.state_dict(), model_out_path)
     
     evaluate_parameter_recovery(model, device, num_test=32)
