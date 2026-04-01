@@ -31,6 +31,14 @@ warnings.filterwarnings("ignore", message="Can't initialize NVML")
 # Options: 'additive_1', 'additive_2', 'multiplicative'
 FUSION_MODE = 'additive_2'  
 
+# Execution Options: 
+# 'ALL' : Train network -> Parameter Recovery -> Real Data Inference
+# 'RECOVERY_ONLY' : Load trained model -> Parameter Recovery
+# 'RECOVERY_AND_INFERENCE' : Load trained model -> Parameter Recovery -> Real Data Inference
+# 'INFERENCE_ONLY' : Load trained model -> Real Data Inference
+# EXECUTION_MODE = 'ALL'
+EXECUTION_MODE = 'INFERENCE_ONLY'
+
 # Define free parameters for HDBM
 if FUSION_MODE in ['additive_1', 'additive_2']:
     HDBM_PARAM_RANGE = {
@@ -328,30 +336,24 @@ def df_to_tensor(df: pd.DataFrame) -> torch.Tensor:
     """preprocessed data converted to tensor format [seq_len, 5] for model input"""
     features = []
     for _, row in df.iterrows():
-        # 1. sequence: Go=0, Stop=1
         is_stop = float(row['sequence'])
         
-        # 2. ssd_scaled: ssd=-1 if Go trial
         if is_stop == 1.0 and pd.notna(row['ssd']):
             ssd_val = float(row['ssd']) / 40.0
         else:
             ssd_val = -1.0 / 40.0
             
-        # 3. go_direction: right=1, left=0
         go_dir = 1.0 if row['true_go_state'] == 'right' else 0.0
         
-        # 4. choice_idx: GS=0, GE=1, GM=2, SS=3, SE=4
         res = row['result']
-        choice_idx = RES_TO_IDX.get(res, 2)  # default to GM
+        choice_idx = RES_TO_IDX.get(res, 2)  
         
-        # 5. rt_scaled: GS, GE, SE -> RT
         actual_rt = 0.0
         if choice_idx in [0, 1, 4] and pd.notna(row['rt']):
             actual_rt = float(row['rt']) / 40.0
             
         features.append([is_stop, ssd_val, go_dir, choice_idx / 4.0, actual_rt])
         
-    # Transformer pos_encoder max_len = 400
     features = features[:400] 
     return torch.tensor(features, dtype=torch.float32)
 
@@ -377,7 +379,7 @@ def run_real_data_inference(model, device):
     
     with tempfile.TemporaryDirectory() as tmpdir:
         for zpath in tqdm(zip_files):
-            subject_id = zpath.name.split('_baseline_')[0]  # ex: NDAR_INVZZZP87KR
+            subject_id = zpath.name.split('_baseline_')[0]  
             
             try:
                 with zipfile.ZipFile(zpath, 'r') as zip_ref:
@@ -389,18 +391,16 @@ def run_real_data_inference(model, device):
                 target_csv = csv_files[0]
                 
                 df = preprocessing(target_csv)
-                tensor_seq = df_to_tensor(df).to(device)  # shape: [seq_len, 5]
+                tensor_seq = df_to_tensor(df).to(device)  
                 
-                # broadcast -> [1, seq_len, 5]
                 tensor_batch = tensor_seq.unsqueeze(0)
                 
-                # 4. inference
                 with torch.no_grad():
                     posterior_dist = model(tensor_batch)
-                    samples = posterior_dist.sample((2000,)) # [2000, 1, 8]
-                    est_scaled = samples.mean(dim=0).cpu()   # [1, 8]
+                    samples = posterior_dist.sample((2000,)) 
+                    est_scaled = samples.mean(dim=0).cpu()   
                     
-                est_original = inverse_transform_from_maf(est_scaled)[0] # 取出 batch 0
+                est_original = inverse_transform_from_maf(est_scaled)[0] 
                 
                 subject_ids.append(subject_id)
                 estimated_means_list.append(est_original)
@@ -432,12 +432,9 @@ def train_pipeline(epochs=300, batch_size=128, patience=40):
     print(f"Current Fusion Mode: {FUSION_MODE.upper()}")
     print(f"Using device: {device.type.upper()}")
     
-    # --- LOAD MULTIPLE DATASET PARTS ---
-    # all part_x from slurm array
     dataset_files = list(BASE_DIR.glob(f"e2e_dataset_*_{FUSION_MODE}_finetune_part_*.pt"))
     
     if not dataset_files:
-        # Fallback to single file check
         single_file = BASE_DIR / f"e2e_dataset_5000_{FUSION_MODE}_finetune.pt"
         if single_file.exists():
             dataset_files = [single_file]
@@ -514,14 +511,45 @@ def train_pipeline(epochs=300, batch_size=128, patience=40):
     model_out_path = BASE_DIR / f"amortized_inference_net_{FUSION_MODE}_finetune.pth"
     torch.save(model.state_dict(), model_out_path)
     
-    # Parameter Recovery, save csv and png
-    evaluate_parameter_recovery(model, device, num_test=32)
-    
     return model, device
 
+# =============================================================================
+# --- MAIN EXECUTION BLOCK ---
+# =============================================================================
 if __name__ == "__main__":
-    # 1. Train the network and evaluate parameter recovery
-    trained_model, comp_device = train_pipeline(epochs=300, batch_size=128, patience=40)
     
-    # 2. Run inference on actual human subjects and save the estimated parameters CSV
-    run_real_data_inference(trained_model, comp_device)
+    comp_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    if EXECUTION_MODE == 'ALL':
+        # Train from scratch, then run recovery and inference
+        trained_model, comp_device = train_pipeline(epochs=300, batch_size=128, patience=40)
+        evaluate_parameter_recovery(trained_model, comp_device, num_test=32)
+        run_real_data_inference(trained_model, comp_device)
+        
+    else:
+        # For RECOVERY_ONLY, INFERENCE_ONLY, or RECOVERY_AND_INFERENCE
+        # We must load the pre-trained weights first
+        pretrained_model_path = BASE_DIR / f"amortized_inference_net_{FUSION_MODE}_finetune.pth"
+        
+        if not pretrained_model_path.exists():
+            print(f"[ERROR] Expected trained model file not found at: {pretrained_model_path}")
+            print(f"Please ensure you have run the 'ALL' mode at least once to train the model.")
+            sys.exit(1)
+            
+        print(f"\nLoading pre-trained model from: {pretrained_model_path}")
+        trained_model = AmortizedInferenceNet(trial_feature_dim=5, param_dim=len(FREE_PARAM)).to(comp_device)
+        trained_model.load_state_dict(torch.load(pretrained_model_path, map_location=comp_device, weights_only=True))
+        
+        # Execute the requested steps
+        if EXECUTION_MODE == 'RECOVERY_ONLY':
+            evaluate_parameter_recovery(trained_model, comp_device, num_test=32)
+            
+        elif EXECUTION_MODE == 'RECOVERY_AND_INFERENCE':
+            evaluate_parameter_recovery(trained_model, comp_device, num_test=32)
+            run_real_data_inference(trained_model, comp_device)
+            
+        elif EXECUTION_MODE == 'INFERENCE_ONLY':
+            run_real_data_inference(trained_model, comp_device)
+            
+        else:
+            print(f"[ERROR] Unknown EXECUTION_MODE: {EXECUTION_MODE}")
