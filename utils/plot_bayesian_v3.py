@@ -63,7 +63,7 @@ def main():
         trajectories.append(traj)
 
     print(">>> 2. Generating the Plot...")
-    fig, ax = plt.subplots(figsize=(7.5, 3.5))
+    fig, ax = plt.subplots(figsize=(7.5, 3))
     plt.subplots_adjust(bottom=0.15, left=0.12, right=0.98, top=0.90) 
     
     trials = np.arange(1, len(seq) + 1)

@@ -27,10 +27,10 @@ cd "${SCRATCH_DIRECTORY}"
 
 # Copy files to the scratch directory
 # Note: Ensure the CSV, Python script, and 'core' folder are in the directory where you run sbatch
-cp "${SLURM_SUBMIT_DIR}/train_e2e_v8_gpu.py" .
+cp "${SLURM_SUBMIT_DIR}/train_e2e_v9_gpu.py" .
 cp "${SLURM_SUBMIT_DIR}/e2e_dataset_5000_additive_2_finetune.pt" .
 cp "${SLURM_SUBMIT_DIR}/orders.csv" .
-cp "${SLURM_SUBMIT_DIR}/pomdp_prior.csv" .
+cp "${SLURM_SUBMIT_DIR}/pomdp_posterior.csv" .
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
 
 # ==========================================
@@ -44,7 +44,7 @@ source ~/rocm_env/bin/activate
 
 # Run the training script
 echo ">>> Starting model training..."
-srun python3 -u train_e2e_v8_gpu.py
+srun python3 -u train_e2e_v9_gpu.py
 
 # ==========================================
 # Copy results back to the original directory
