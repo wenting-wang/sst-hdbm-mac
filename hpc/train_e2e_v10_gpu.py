@@ -378,9 +378,12 @@ def run_real_data_inference(model, device):
     print(f"Processing {len(zip_files)} real subjects from {REAL_DATA_DIR}...")
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        for zpath in tqdm(zip_files):
-            subject_id = zpath.name.split('_baseline_')[0]  
-            
+        for i, zpath in enumerate(zip_files):
+            if (i + 1) % 1000 == 0:
+                print(f">>> Progress: [{i + 1} / {len(zip_files)}] real subjects processed...", flush=True)
+                
+            subject_id = zpath.name.split('_baseline_')[0]
+         
             try:
                 with zipfile.ZipFile(zpath, 'r') as zip_ref:
                     zip_ref.extractall(tmpdir)
