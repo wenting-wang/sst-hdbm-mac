@@ -29,15 +29,15 @@ warnings.filterwarnings("ignore", message="Can't initialize NVML")
 # GLOBAL CONFIGURATION FOR CLUSTER RUNS
 # =============================================================================
 # Options: 'additive_1', 'additive_2', 'multiplicative'
-FUSION_MODE = 'additive_2'  
+FUSION_MODE = 'multiplicative'  
 
 # Execution Options: 
 # 'ALL' : Train network -> Parameter Recovery -> Real Data Inference
 # 'RECOVERY_ONLY' : Load trained model -> Parameter Recovery
 # 'RECOVERY_AND_INFERENCE' : Load trained model -> Parameter Recovery -> Real Data Inference
 # 'INFERENCE_ONLY' : Load trained model -> Real Data Inference
-# EXECUTION_MODE = 'ALL'
-EXECUTION_MODE = 'INFERENCE_ONLY'
+EXECUTION_MODE = 'ALL'
+# EXECUTION_MODE = 'INFERENCE_ONLY'
 
 # Define free parameters for HDBM
 if FUSION_MODE in ['additive_1', 'additive_2']:

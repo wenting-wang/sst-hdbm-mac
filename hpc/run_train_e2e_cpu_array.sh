@@ -49,7 +49,7 @@ srun python3 -u train_e2e_v10_cpu.py --n_samples 5000 --part_id ${SLURM_ARRAY_TA
 # ==========================================
 echo ">>> Generation finished. Copying dataset back to the submit directory..."
 
-cp *.pt "${SLURM_SUBMIT_DIR}/" 
+# cp *.pt "${SLURM_SUBMIT_DIR}/" 
 
 echo ">>> Copy complete."
 echo ">>> Scratch cleanup bypassed. You can inspect the files at: ${SCRATCH_DIRECTORY}"
