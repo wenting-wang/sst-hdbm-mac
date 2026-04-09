@@ -207,7 +207,7 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
         actual_rt = rt if choice_idx in [0, 1, 4] else 0.0
         
         features_seq.append([
-            float(is_stop), ssd / 40.0, float(go_directions[t]), choice_idx / 4.0, actual_rt / 40.0
+            float(is_stop), ssd, float(go_directions[t]), choice_idx, actual_rt
         ])
         
         if is_stop == 1:
@@ -228,7 +228,7 @@ def enhance_features(x: torch.Tensor) -> torch.Tensor:
 
     # --- 1. Recover original values from scaled inputs ---
     # choice_idx was scaled by 4.0; recover integer 0, 1, 2, 3, 4
-    choice_idx = torch.round(x[..., 3] * 4.0).long() 
+    choice_idx = torch.round(x[..., 3]).long() 
     rt = x[..., 4]  # Keep scaled RT
     ssd = x[..., 1] # Keep scaled SSD
 
@@ -413,10 +413,10 @@ def df_to_tensor(df: pd.DataFrame) -> torch.Tensor:
         is_stop = float(row['sequence'])
         
         if is_stop == 1.0 and pd.notna(row['ssd']):
-            ssd_val = float(row['ssd']) / 40.0
+            ssd_val = round(float(row['ssd']) / 25.0)
         else:
-            ssd_val = -1.0 / 40.0
-            
+            ssd_val = -1.0
+
         go_dir = 1.0 if row['true_go_state'] == 'right' else 0.0
         
         res = row['result']
@@ -424,9 +424,9 @@ def df_to_tensor(df: pd.DataFrame) -> torch.Tensor:
         
         actual_rt = 0.0
         if choice_idx in [0, 1, 4] and pd.notna(row['rt']):
-            actual_rt = float(row['rt']) / 40.0
+            actual_rt = round(float(row['rt']) / 25.0)
             
-        features.append([is_stop, ssd_val, go_dir, choice_idx / 4.0, actual_rt])
+        features.append([is_stop, float(ssd_val), go_dir, float(choice_idx), float(actual_rt)])
         
     features = features[:400] 
     return torch.tensor(features, dtype=torch.float32)

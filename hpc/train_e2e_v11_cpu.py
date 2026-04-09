@@ -208,10 +208,10 @@ def simulate_single_dataset(args) -> Tuple[np.ndarray, np.ndarray]:
         
         features_seq.append([
             float(is_stop), 
-            ssd / 40.0, 
+            ssd, 
             float(go_directions[t]), 
-            choice_idx / 4.0, 
-            actual_rt / 40.0
+            choice_idx, 
+            actual_rt
         ])
         
         if is_stop == 1:
