@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore", message="Can't initialize NVML")
 # GLOBAL CONFIGURATION FOR CLUSTER RUNS
 # =============================================================================
 # Options: 'additive_1', 'additive_2', 'multiplicative'
-FUSION_MODE = 'multiplicative'  
+FUSION_MODE = 'additive_2'  
 
 # Execution Options: 
 # 'ALL' : Train network -> Parameter Recovery -> Real Data Inference
@@ -413,20 +413,19 @@ def df_to_tensor(df: pd.DataFrame) -> torch.Tensor:
         is_stop = float(row['sequence'])
         
         if is_stop == 1.0 and pd.notna(row['ssd']):
-            ssd_val = round(float(row['ssd']) / 25.0)
+            ssd_val = float(row['ssd'])
         else:
             ssd_val = -1.0
 
         go_dir = 1.0 if row['true_go_state'] == 'right' else 0.0
-        
         res = row['result']
         choice_idx = RES_TO_IDX.get(res, 2)  
         
         actual_rt = 0.0
         if choice_idx in [0, 1, 4] and pd.notna(row['rt']):
-            actual_rt = round(float(row['rt']) / 25.0)
+            actual_rt = float(row['rt'])
             
-        features.append([is_stop, float(ssd_val), go_dir, float(choice_idx), float(actual_rt)])
+        features.append([is_stop, ssd_val, go_dir, float(choice_idx), actual_rt])
         
     features = features[:400] 
     return torch.tensor(features, dtype=torch.float32)

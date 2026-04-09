@@ -24,7 +24,7 @@ echo "Running in scratch directory: ${SCRATCH_DIRECTORY}"
 
 cd "${SCRATCH_DIRECTORY}"
 
-cp "${SLURM_SUBMIT_DIR}/train_e2e_v10_cpu.py" .
+cp "${SLURM_SUBMIT_DIR}/train_e2e_v11_cpu.py" .
 cp "${SLURM_SUBMIT_DIR}/orders.csv" .
 cp "${SLURM_SUBMIT_DIR}/pomdp_posterior.csv" .
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
@@ -42,14 +42,14 @@ source ~/rocm_env/bin/activate
 echo ">>> Starting REAL POMDP Data Generation on CPU cores (Part ${SLURM_ARRAY_TASK_ID})..."
 
 # 将 SLURM 自动分配的 Array Task ID 传给我们的 Python 脚本
-srun python3 -u train_e2e_v10_cpu.py --n_samples 5000 --part_id ${SLURM_ARRAY_TASK_ID}
+srun python3 -u train_e2e_v11_cpu.py --n_samples 5000 --part_id ${SLURM_ARRAY_TASK_ID}
 
 # ==========================================
 # Copy results back to the original directory
 # ==========================================
 echo ">>> Generation finished. Copying dataset back to the submit directory..."
 
-# cp *.pt "${SLURM_SUBMIT_DIR}/" 
+cp *.pt "${SLURM_SUBMIT_DIR}/" 
 
 echo ">>> Copy complete."
 echo ">>> Scratch cleanup bypassed. You can inspect the files at: ${SCRATCH_DIRECTORY}"

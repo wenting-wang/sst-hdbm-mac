@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", message="Can't initialize NVML")
 # GLOBAL CONFIGURATION FOR CLUSTER RUNS
 # =============================================================================
 # Options: 'additive_1', 'additive_2', 'multiplicative'
-FUSION_MODE = 'multiplicative'  
+FUSION_MODE = 'additive_2'  
 
 # Define free parameters for HDBM (using 'eta' throughout)
 if FUSION_MODE in ['additive_1', 'additive_2']:

@@ -329,7 +329,7 @@ def main():
     df_params.to_csv(out_param_csv, index=False)
     
     print("\n==================================================")
-    print("🎯 ARCHETYPE SUBJECT PARAMETERS EXPORTED")
+    print(" ARCHETYPE SUBJECT PARAMETERS EXPORTED")
     print("==================================================")
     for p in param_export_list:
         print(f"\n🔹 {p['Archetype']} (Subj: {p['Subject_ID']})")

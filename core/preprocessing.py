@@ -80,8 +80,10 @@ def preprocessing(file_path: Union[str, Path]) -> pd.DataFrame:
     df['rt_real'] = df['sst_primaryrt']
 
     # Discretize time into steps for the POMDP simulator
-    df['ssd'] = df['ssd_real'] // TIME_STEP_MS
-    df['rt'] = df['rt_real'] // TIME_STEP_MS
+    # df['ssd'] = df['ssd_real'] // TIME_STEP_MS
+    # df['rt'] = df['rt_real'] // TIME_STEP_MS
+    df['ssd'] = np.round(df['ssd_real'] / TIME_STEP_MS)
+    df['rt'] = np.round(df['rt_real'] / TIME_STEP_MS)
 
     # Isolate real Reaction Times specifically for Go Success trials
     df["rt_gs_real"] = np.where(df["result"] == "GS", df["rt_real"], np.nan)
