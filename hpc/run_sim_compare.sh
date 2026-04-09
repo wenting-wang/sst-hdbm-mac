@@ -2,9 +2,9 @@
 #SBATCH --job-name=SIM_COMP
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16           # 16 cores are highly sufficient for this multi-simulation task
-#SBATCH --mem=64000                  # 64GB Memory
-#SBATCH --time=04:00:00              # 4 hours allocated
+#SBATCH --cpus-per-task=128          
+#SBATCH --mem=128000     
+#SBATCH --time=24:00:00              # 24 hours allocated
 #SBATCH --output=slurm_sim_comp-%j.out
 #SBATCH --mail-type=END,FAIL         
 #SBATCH --mail-user=wenting.wang.cd@outlook.com
