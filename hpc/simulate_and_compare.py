@@ -138,6 +138,7 @@ def simulate_behavior(seq_int, pomdp_p, hdbm_p=None, fusion_mode='additive_2'):
                 
     return sim_rts
 
+
 def extract_mean_local_trend(is_go_array, rts_array):
     def extract_streaks(is_go_array, rt_array):
         streaks = []
@@ -155,7 +156,7 @@ def extract_mean_local_trend(is_go_array, rts_array):
         return streaks
     
     streaks = extract_streaks(is_go_array[:180], rts_array[:180]) + extract_streaks(is_go_array[180:], rts_array[180:])
-    if not streaks: return []
+    if not streaks: return [], []
     
     max_len = max(len(s) for s in streaks)
     mat = np.full((len(streaks), max_len), np.nan)
@@ -163,16 +164,19 @@ def extract_mean_local_trend(is_go_array, rts_array):
     
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        return np.nanmean(mat, axis=0)
+        # NEW: 同时返回均值和标准差
+        return np.nanmean(mat, axis=0), np.nanstd(mat, axis=0)
 
 def run_single_simulation_pair(seq_int, pomdp_p, hdbm_p, is_go_mask, fusion_mode):
     rts_pomdp = simulate_behavior(seq_int, pomdp_p, hdbm_p=None)
-    local_pomdp = extract_mean_local_trend(is_go_mask, rts_pomdp)
+    # 模拟数据在这一步只需要均值，标准差我们会在外层算 50 次的 variance
+    local_pomdp, _ = extract_mean_local_trend(is_go_mask, rts_pomdp)
     
     rts_hdbm = simulate_behavior(seq_int, pomdp_p, hdbm_p=hdbm_p, fusion_mode=fusion_mode)
-    local_hdbm = extract_mean_local_trend(is_go_mask, rts_hdbm)
+    local_hdbm, _ = extract_mean_local_trend(is_go_mask, rts_hdbm)
     
     return local_pomdp, rts_pomdp, local_hdbm, rts_hdbm
+
 
 def append_plot_data(data_list, arch, sub_id, metric, model_name, x_vals, mean_vals, std_vals=None):
     if std_vals is None:
@@ -211,9 +215,9 @@ def main():
         is_go_mask = np.array([s == 0 for s in seq_int])
         
         real_is_go, real_rts = extract_real_rts(sub_id)
-        real_local = extract_mean_local_trend(real_is_go, real_rts)
+        real_local_mean, real_local_std = extract_mean_local_trend(real_is_go, real_rts)
         pomdp_p, hdbm_p = get_subject_params(sub_id, hdbm_param_file)
-        
+                
         # --- 收集并打印被试的参数 ---
         merged_params = {
             'Archetype': title,
@@ -259,29 +263,37 @@ def main():
             hdbm_global_std = np.nanstd(np.array(hdbm_global_acc), axis=0)
 
         # --- DATA RECORDING FOR CSV EXPORT ---
-        x_local_real = range(1, len(real_local)+1)
+        x_local_real = range(1, len(real_local_mean)+1)
         x_local_p = range(1, len(pomdp_local_mean)+1)
         x_local_h = range(1, len(hdbm_local_mean)+1)
         
-        append_plot_data(export_data_list, title, sub_id, 'Local', 'Real Data', x_local_real, real_local)
+        # NEW: 记录真实数据的 std
+        append_plot_data(export_data_list, title, sub_id, 'Local', 'Real Data', x_local_real, real_local_mean, real_local_std)
         append_plot_data(export_data_list, title, sub_id, 'Local', 'Static POMDP', x_local_p, pomdp_local_mean, pomdp_local_std)
         append_plot_data(export_data_list, title, sub_id, 'Local', 'E2E HDBM', x_local_h, hdbm_local_mean, hdbm_local_std)
         
         window = 15
-        real_smooth = pd.Series(real_rts).interpolate().rolling(window, min_periods=1).mean().values
+        real_series_interp = pd.Series(real_rts).interpolate()
+        real_smooth = real_series_interp.rolling(window, min_periods=1).mean().values
+        # NEW: 计算真实数据的滑动标准差 (用 fillna(0) 防止第一个数出现 NaN)
+        real_std_sm = real_series_interp.rolling(window, min_periods=1).std().fillna(0).values
+        
         pomdp_smooth = pd.Series(pomdp_global_mean).interpolate().rolling(window, min_periods=1).mean().values
         pomdp_std_sm = pd.Series(pomdp_global_std).interpolate().rolling(window, min_periods=1).mean().values
         hdbm_smooth = pd.Series(hdbm_global_mean).interpolate().rolling(window, min_periods=1).mean().values
         hdbm_std_sm = pd.Series(hdbm_global_std).interpolate().rolling(window, min_periods=1).mean().values
         x_trials = np.arange(1, len(seq_int)+1)
         
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'Real Data', x_trials, real_smooth)
+        # NEW: 记录真实全局数据的 std
+        append_plot_data(export_data_list, title, sub_id, 'Global', 'Real Data', x_trials, real_smooth, real_std_sm)
         append_plot_data(export_data_list, title, sub_id, 'Global', 'Static POMDP', x_trials, pomdp_smooth, pomdp_std_sm)
         append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM', x_trials, hdbm_smooth, hdbm_std_sm)
 
         # --- PLOTTING WITH ERROR BANDS ---
         ax_local = axes[row_idx, 0]
-        ax_local.plot(x_local_real, real_local, 'ko-', lw=2, label="Real Data")
+        # NEW: 画真实数据的阴影
+        ax_local.plot(x_local_real, real_local_mean, 'ko-', lw=2, label="Real Data")
+        ax_local.fill_between(x_local_real, real_local_mean - real_local_std, real_local_mean + real_local_std, color='k', alpha=0.15)
         
         ax_local.plot(x_local_p, pomdp_local_mean, 'r--', lw=2, label="Static POMDP Baseline")
         ax_local.fill_between(x_local_p, pomdp_local_mean - pomdp_local_std, pomdp_local_mean + pomdp_local_std, color='r', alpha=0.15)
@@ -296,7 +308,9 @@ def main():
         if row_idx == 0: ax_local.legend()
 
         ax_global = axes[row_idx, 1]
-        ax_global.plot(x_trials, real_smooth, 'k-', alpha=0.5, lw=2, label="Real Data (Smoothed)")
+        # NEW: 画真实数据的滑动阴影
+        ax_global.plot(x_trials, real_smooth, 'k-', alpha=0.8, lw=2, label="Real Data (Smoothed)")
+        ax_global.fill_between(x_trials, real_smooth - real_std_sm, real_smooth + real_std_sm, color='k', alpha=0.1)
         
         ax_global.plot(x_trials, pomdp_smooth, 'r--', lw=2, label="Static POMDP Baseline")
         ax_global.fill_between(x_trials, pomdp_smooth - pomdp_std_sm, pomdp_smooth + pomdp_std_sm, color='r', alpha=0.15)
