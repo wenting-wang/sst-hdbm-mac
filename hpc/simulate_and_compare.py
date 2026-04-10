@@ -86,6 +86,7 @@ def simulate_behavior(seq_int, pomdp_p, hdbm_p=None, fusion_mode='additive_2'):
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     sim_rts = np.full(total_trials, np.nan)
+    sim_results = np.full(total_trials, 'nan', dtype=object) # NEW: 保存 trial 级别的 result
     next_stop_ssd = 2
     
     if hdbm_p is None:
@@ -104,6 +105,8 @@ def simulate_behavior(seq_int, pomdp_p, hdbm_p=None, fusion_mode='additive_2'):
             ssd = next_stop_ssd if is_stop == 1 else -1
             
             res_str, rt = simulation.simu_trial(pomdp, true_go_state=go_dir, true_stop_state=true_stop_state, ssd=ssd, verbose=False)
+            sim_results[t] = res_str
+            
             if is_stop == 0 and res_str in ['GS', 'GE']: sim_rts[t] = rt * 25.0 
             if is_stop == 1:
                 if res_str == 'SS': next_stop_ssd = min(next_stop_ssd + 2, 34)
@@ -131,12 +134,14 @@ def simulate_behavior(seq_int, pomdp_p, hdbm_p=None, fusion_mode='additive_2'):
             pomdp.value_iteration_tensor()
             
             res_str, rt = simulation.simu_trial(pomdp, true_go_state=go_dir, true_stop_state=true_stop_state, ssd=ssd, verbose=False)
+            sim_results[t] = res_str
+            
             if is_stop == 0 and res_str in ['GS', 'GE']: sim_rts[t] = rt * 25.0 
             if is_stop == 1:
                 if res_str == 'SS': next_stop_ssd = min(next_stop_ssd + 2, 34)
                 elif res_str == 'SE': next_stop_ssd = max(next_stop_ssd - 2, 2)
                 
-    return sim_rts
+    return sim_rts, sim_results
 
 def extract_mean_local_trend(is_go_array, rts_array):
     def extract_streaks(is_go_array, rt_array):
@@ -163,17 +168,16 @@ def extract_mean_local_trend(is_go_array, rts_array):
     
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        # np.nanmean 会自动忽略 NaN 并用有效值求均值
         return np.nanmean(mat, axis=0), np.nanstd(mat, axis=0)
 
 def run_single_simulation_pair(seq_int, pomdp_p, hdbm_p, is_go_mask, fusion_mode):
-    rts_pomdp = simulate_behavior(seq_int, pomdp_p, hdbm_p=None)
+    rts_pomdp, res_pomdp = simulate_behavior(seq_int, pomdp_p, hdbm_p=None)
     local_pomdp, _ = extract_mean_local_trend(is_go_mask, rts_pomdp)
     
-    rts_hdbm = simulate_behavior(seq_int, pomdp_p, hdbm_p=hdbm_p, fusion_mode=fusion_mode)
+    rts_hdbm, res_hdbm = simulate_behavior(seq_int, pomdp_p, hdbm_p=hdbm_p, fusion_mode=fusion_mode)
     local_hdbm, _ = extract_mean_local_trend(is_go_mask, rts_hdbm)
     
-    return local_pomdp, rts_pomdp, local_hdbm, rts_hdbm
+    return local_pomdp, rts_pomdp, res_pomdp, local_hdbm, rts_hdbm, res_hdbm
 
 def append_plot_data(data_list, arch, sub_id, metric, model_name, x_vals, mean_vals, std_vals=None):
     if std_vals is None:
@@ -203,6 +207,9 @@ def main():
     fig, axes = plt.subplots(4, 2, figsize=(16, 18))
     export_data_list = [] 
     param_export_list = [] 
+    
+    # NEW: 用于存储 50 次模拟、每一次 trial 的最原始数据
+    raw_50_sims_data = [] 
     
     for row_idx, (title, subj_data) in enumerate(archetypes.items()):
         sub_id = subj_data['subject_id']
@@ -235,8 +242,25 @@ def main():
         
         pomdp_local_acc = [res[0] for res in results]
         pomdp_global_acc = [res[1] for res in results]
-        hdbm_local_acc = [res[2] for res in results]
-        hdbm_global_acc = [res[3] for res in results]
+        pomdp_res_acc = [res[2] for res in results]
+        hdbm_local_acc = [res[3] for res in results]
+        hdbm_global_acc = [res[4] for res in results]
+        hdbm_res_acc = [res[5] for res in results]
+        
+        # NEW: 将 50 次模拟的所有 Trial 级别 RT 和 Result 存入原始收集器
+        for sim_i in range(N_SIMULATIONS):
+            for t in range(len(seq_int)):
+                raw_50_sims_data.append({
+                    'Archetype': title,
+                    'Subject_ID': sub_id,
+                    'Simulation_ID': sim_i + 1,
+                    'Trial_Num': t + 1,
+                    'Is_Go_Trial': is_go_mask[t],
+                    'Static_POMDP_Result': pomdp_res_acc[sim_i][t],
+                    'Static_POMDP_RT': pomdp_global_acc[sim_i][t],
+                    'E2E_HDBM_Result': hdbm_res_acc[sim_i][t],
+                    'E2E_HDBM_RT': hdbm_global_acc[sim_i][t]
+                })
 
         # Calculate Means and Standard Deviations across 50 sims
         with warnings.catch_warnings():
@@ -259,42 +283,22 @@ def main():
             hdbm_global_mean = np.nanmean(np.array(hdbm_global_acc), axis=0)
             hdbm_global_std = np.nanstd(np.array(hdbm_global_acc), axis=0)
 
-        # --- DATA RECORDING FOR CSV EXPORT (LOCAL) ---
+        # --- DATA RECORDING FOR CSV EXPORT (LOCAL & PLOT DATA) ---
         x_local_real = range(1, len(real_local_mean)+1)
         x_local_p = range(1, len(pomdp_local_mean)+1)
         x_local_h = range(1, len(hdbm_local_mean)+1)
         
         append_plot_data(export_data_list, title, sub_id, 'Local', 'Real Data', x_local_real, real_local_mean, real_local_std)
         append_plot_data(export_data_list, title, sub_id, 'Local', 'Static POMDP', x_local_p, pomdp_local_mean, pomdp_local_std)
-        append_plot_data(export_data_list, title, sub_id, 'Local', 'E2E HDBM', x_local_h, hdbm_local_mean, hdbm_local_std)
+        append_plot_data(export_data_list, title, sub_id, 'Local', 'E2E HDBM (Expected)', x_local_h, hdbm_local_mean, hdbm_local_std)
         
-        # --- DATA RECORDING FOR CSV EXPORT (GLOBAL - NO INTERPOLATION) ---
         x_trials = np.arange(1, len(seq_int)+1)
-        
-        # 💡 这里去掉了所有的 .interpolate().bfill()，保持真实的 NaN 断点
-        real_trial_rts = real_rts
-        real_trial_std = np.zeros_like(real_trial_rts) 
-        
-        pomdp_trial_mean = pomdp_global_mean
-        pomdp_trial_std = pomdp_global_std
-        
-        hdbm_trial_mean = hdbm_global_mean
-        hdbm_trial_std = hdbm_global_std
-        
-        # 取 3 条独立的单次模拟作为展示
-        hdbm_single_1 = hdbm_global_acc[0]
-        hdbm_single_2 = hdbm_global_acc[1]
-        hdbm_single_3 = hdbm_global_acc[2]
-        
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'Real Data', x_trials, real_trial_rts, real_trial_std)
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'Static POMDP', x_trials, pomdp_trial_mean, pomdp_trial_std)
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM (Expected)', x_trials, hdbm_trial_mean, hdbm_trial_std)
-        
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM (Single 1)', x_trials, hdbm_single_1, np.zeros_like(hdbm_single_1))
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM (Single 2)', x_trials, hdbm_single_2, np.zeros_like(hdbm_single_2))
-        append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM (Single 3)', x_trials, hdbm_single_3, np.zeros_like(hdbm_single_3))
+        append_plot_data(export_data_list, title, sub_id, 'Global', 'Real Data', x_trials, real_rts, np.zeros_like(real_rts))
+        append_plot_data(export_data_list, title, sub_id, 'Global', 'Static POMDP (Expected)', x_trials, pomdp_global_mean, pomdp_global_std)
+        append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM (Expected)', x_trials, hdbm_global_mean, hdbm_global_std)
 
-        # --- PLOTTING WITH ERROR BANDS ---
+        # --- PLOTTING ---
+        # --- 1. LOCAL TREND (With Single Sims) ---
         ax_local = axes[row_idx, 0]
         ax_local.plot(x_local_real, real_local_mean, 'ko-', lw=2, label="Real Data")
         ax_local.fill_between(x_local_real, real_local_mean - real_local_std, real_local_mean + real_local_std, color='k', alpha=0.15)
@@ -302,7 +306,12 @@ def main():
         ax_local.plot(x_local_p, pomdp_local_mean, 'r--', lw=2, label="Static POMDP Baseline")
         ax_local.fill_between(x_local_p, pomdp_local_mean - pomdp_local_std, pomdp_local_mean + pomdp_local_std, color='r', alpha=0.15)
         
-        ax_local.plot(x_local_h, hdbm_local_mean, 'b-', lw=2.5, label="E2E HDBM+POMDP")
+        # HDBM 3条单次模拟细线放在 Local Trend 里
+        ax_local.plot(range(1, len(hdbm_local_acc[0])+1), hdbm_local_acc[0], color='cyan', alpha=0.5, lw=1, label="E2E HDBM (Single Sims)")
+        ax_local.plot(range(1, len(hdbm_local_acc[1])+1), hdbm_local_acc[1], color='cyan', alpha=0.5, lw=1)
+        ax_local.plot(range(1, len(hdbm_local_acc[2])+1), hdbm_local_acc[2], color='cyan', alpha=0.5, lw=1)
+        
+        ax_local.plot(x_local_h, hdbm_local_mean, 'b-', lw=2.5, label="E2E HDBM (Expected)")
         ax_local.fill_between(x_local_h, hdbm_local_mean - hdbm_local_std, hdbm_local_mean + hdbm_local_std, color='b', alpha=0.15)
         
         ax_local.set_title(f"{title}: Local RT Trend")
@@ -311,23 +320,19 @@ def main():
         ax_local.grid(True, alpha=0.3)
         if row_idx == 0: ax_local.legend()
 
+        # --- 2. GLOBAL TREND (Clean, No Single Sims) ---
         ax_global = axes[row_idx, 1]
         
         # Real Data 原始折线 (带真实的断点)
-        ax_global.plot(x_trials, real_trial_rts, 'k-', alpha=0.8, lw=1.5, label="Real Data")
+        ax_global.plot(x_trials, real_rts, 'k-', alpha=0.8, lw=1.5, label="Real Data")
         
         # Static POMDP 原始均值折线 + 误差带
-        ax_global.plot(x_trials, pomdp_trial_mean, 'r--', lw=1.5, label="Static POMDP Baseline")
-        ax_global.fill_between(x_trials, pomdp_trial_mean - pomdp_trial_std, pomdp_trial_mean + pomdp_trial_std, color='r', alpha=0.15)
-        
-        # HDBM 3条单次模拟细线 (展示 variance 和极端的跳变，遇到 Stop Trial 自然断开)
-        ax_global.plot(x_trials, hdbm_single_1, color='cyan', alpha=0.3, lw=1, label="E2E HDBM (Single Sims)")
-        ax_global.plot(x_trials, hdbm_single_2, color='cyan', alpha=0.3, lw=1)
-        ax_global.plot(x_trials, hdbm_single_3, color='cyan', alpha=0.3, lw=1)
+        ax_global.plot(x_trials, pomdp_global_mean, 'r--', lw=1.5, label="Static POMDP Baseline")
+        ax_global.fill_between(x_trials, pomdp_global_mean - pomdp_global_std, pomdp_global_mean + pomdp_global_std, color='r', alpha=0.15)
         
         # HDBM 期望粗线 + 误差带
-        ax_global.plot(x_trials, hdbm_trial_mean, 'b-', lw=2, label="E2E HDBM (Expected)")
-        ax_global.fill_between(x_trials, hdbm_trial_mean - hdbm_trial_std, hdbm_trial_mean + hdbm_trial_std, color='b', alpha=0.15)
+        ax_global.plot(x_trials, hdbm_global_mean, 'b-', lw=2.5, label="E2E HDBM (Expected)")
+        ax_global.fill_between(x_trials, hdbm_global_mean - hdbm_global_std, hdbm_global_mean + hdbm_global_std, color='b', alpha=0.15)
         
         ax_global.set_title(f"{title}: Global Trial Trajectory")
         ax_global.set_xlabel("Trial Number")
@@ -343,10 +348,17 @@ def main():
     plt.savefig(out_img, dpi=300)
     print(f"\n>>> Saved comparison plot to {out_img}")
     
+    # 1. 保存用于画图的 Aggregate Data
     df_export = pd.DataFrame(export_data_list)
     out_csv = out_dir / f'plot_data_{args.fusion_mode}.csv'
     df_export.to_csv(out_csv, index=False)
-    print(f">>> Saved raw plotting data to {out_csv}")
+    print(f">>> Saved aggregated plotting data to {out_csv}")
+    
+    # 2. 🔥 保存极其庞大详尽的 Trial-Level 原始模拟数据
+    df_raw_sims = pd.DataFrame(raw_50_sims_data)
+    out_raw_csv = out_dir / f'raw_50_simulations_{args.fusion_mode}.csv'
+    df_raw_sims.to_csv(out_raw_csv, index=False)
+    print(f">>> Saved 100% RAW trial-by-trial data for all 50 simulations to {out_raw_csv}")
     
     # --- PRINT AND SAVE ARCHETYPE PARAMS ---
     df_params = pd.DataFrame(param_export_list)
