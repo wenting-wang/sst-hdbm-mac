@@ -50,7 +50,7 @@ sys.path.append(str(BASE_DIR))
 ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
 PRIOR_CSV_PATH = BASE_DIR / "pomdp_posterior.csv"
 
-from core.hdbm_v5 import HDBM  
+from core.hdbm_v6 import HDBM  
 from core.pomdp import POMDP
 from core import simulation
 

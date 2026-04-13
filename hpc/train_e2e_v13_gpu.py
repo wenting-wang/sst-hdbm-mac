@@ -65,7 +65,7 @@ ORDERS_CSV_PATH = BASE_DIR / "orders.csv"
 PRIOR_CSV_PATH = BASE_DIR / "pomdp_posterior.csv"
 REAL_DATA_DIR = Path("/u/wenwang/data/sst_valid_base")
 
-from core.hdbm_v5 import HDBM  
+from core.hdbm_v6 import HDBM  
 from core.pomdp import POMDP
 from core import simulation
 from core.preprocessing import preprocessing
@@ -382,11 +382,15 @@ def evaluate_parameter_recovery(model, device, num_test=32):
 
     # --- 5.2 GENERATE SCATTER PLOT ---
     num_params = len(FREE_PARAM)
-    cols = 4  
-    rows = 2
+    cols = 3  # 改为每行 3 个图
+    rows = math.ceil(num_params / cols)  # 自动计算行数（9个参数就是3行）
     fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
     axes = axes.flatten()
     
+    # 隐藏多余的空白子图（万一以后参数变成10个或11个，就不会画出空框）
+    for i in range(num_params, len(axes)):
+        fig.delaxes(axes[i])
+
     for j, param_name in enumerate(FREE_PARAM):
         ax = axes[j]
         t_vals = true_original[:, j]
@@ -509,7 +513,7 @@ def run_real_data_inference(model, device):
 
 
 # --- 7. MAIN TRAINING PIPELINE ---
-def train_pipeline(epochs=300, batch_size=128, patience=40):
+def train_pipeline(epochs=600, batch_size=128, patience=40):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"--- Training Initialization ---")
     print(f"Current Fusion Mode: {FUSION_MODE.upper()}")
@@ -607,7 +611,7 @@ if __name__ == "__main__":
     
     if EXECUTION_MODE == 'ALL':
         # Train from scratch, then run recovery and inference
-        trained_model, comp_device = train_pipeline(epochs=300, batch_size=128, patience=40)
+        trained_model, comp_device = train_pipeline(epochs=600, batch_size=128, patience=40)
         evaluate_parameter_recovery(trained_model, comp_device, num_test=32)
         run_real_data_inference(trained_model, comp_device)
         

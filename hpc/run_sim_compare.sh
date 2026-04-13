@@ -29,9 +29,11 @@ cd "${SCRATCH_DIRECTORY}"
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
 cp "${SLURM_SUBMIT_DIR}/subject_local_trends.csv" .
 cp "${SLURM_SUBMIT_DIR}/pomdp_posterior.csv" .
+# cp "${SLURM_SUBMIT_DIR}/est_param_additive_1.csv" .
 cp "${SLURM_SUBMIT_DIR}/est_param_additive_2.csv" .
+# cp "${SLURM_SUBMIT_DIR}/est_param_multiplicative.csv" .
 cp "${SLURM_SUBMIT_DIR}/orders.csv" .
-cp "${SLURM_SUBMIT_DIR}/simulate_and_compare_v2.py" .
+cp "${SLURM_SUBMIT_DIR}/simulate_and_compare_v3.py" .
 
 # ==========================================
 # 3. Load Environment
@@ -44,7 +46,7 @@ source ~/rocm_env/bin/activate
 # 4. Run the simulation
 # ==========================================
 echo ">>> Starting Model Simulation and Comparison..."
-srun python3 -u simulate_and_compare_v2.py
+srun python3 -u simulate_and_compare_v3.py
 
 # ==========================================
 # 5. Copy results back

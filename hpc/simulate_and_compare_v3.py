@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", message="Mean of empty slice")
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
-from core.hdbm_v4 import HDBM
+from core.hdbm_v6 import HDBM  
 from core.pomdp import POMDP
 from core import simulation
 
