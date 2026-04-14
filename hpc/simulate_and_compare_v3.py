@@ -37,7 +37,7 @@ ORDERS_FILE = BASE_DIR / 'orders.csv'
 DATA_ROOT = Path("/u/wenwang/data/sst_valid_base")
 
 FIXED_PARAMS = {"cost_time": 0.001, "cost_go_error": 1.0, "cost_go_missing": 1.0}
-N_SIMULATIONS = 50  
+N_SIMULATIONS = 10  
 
 def extract_real_rts(subject_id):
     zip_filename = f"{subject_id}_baseline_year_1_arm_1_sst.csv.zip"
@@ -219,29 +219,52 @@ def main():
     
     # fig, axes = plt.subplots(4, 2, figsize=(16, 18))
     
+    ######################
+    
+    # print(f"--- Running Simulation Comparison for {args.fusion_mode.upper()} ---")
+    # hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}.csv'
+    
+    # # 读取原始 metadata (包含 order_sig) 和 神经网络的参数
+    # df_trends = pd.read_csv(TRENDS_FILE)
+    # df_params = pd.read_csv(hdbm_param_file)
+    
+    # # 💡 核心修复：把两个表合并！这样既有参数，又有 order_sig
+    # df_merged = pd.merge(df_params, df_trends[['subject_id', 'order_sig']], on='subject_id', how='inner')
+    
+    # archetypes = {
+    #     # 1. k 值最大的被试 -> 绝对的极端 U 型 (后期爆发恐慌)
+    #     "1. Max K (Extreme Gambler)": df_merged.sort_values('k', ascending=False).iloc[0],
+        
+    #     # 2. k 接近 1 的被试 -> 理性、平稳的无记忆性衰减
+    #     "2. Rational (k ≈ 1)": df_merged.iloc[(df_merged['k'] - 1.0).abs().argsort()[:1]].iloc[0],
+        
+    #     # 3. eta 值最大的被试 -> 期望值 E[r] 衰减最快，前期速度最快
+    #     "3. Max Eta (Rapid Memory Drop)": df_merged.sort_values('eta', ascending=False).iloc[0],
+        
+    #     # 4. rho 值最大的被试 -> 最容易受 Hazard 时间因素主导的人
+    #     "4. Max Rho (Hazard Dominated)": df_merged.sort_values('rho', ascending=False).iloc[0],
+    # }
+    
+    # fig, axes = plt.subplots(4, 2, figsize=(16, 18))
+    
+    #############
     
     print(f"--- Running Simulation Comparison for {args.fusion_mode.upper()} ---")
     hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}.csv'
     
-    # 读取原始 metadata (包含 order_sig) 和 神经网络的参数
+    # 读取原始 trends (包含形状指标和 order_sig) 和 神经网络的参数
     df_trends = pd.read_csv(TRENDS_FILE)
     df_params = pd.read_csv(hdbm_param_file)
     
-    # 💡 核心修复：把两个表合并！这样既有参数，又有 order_sig
-    df_merged = pd.merge(df_params, df_trends[['subject_id', 'order_sig']], on='subject_id', how='inner')
+    # 💡 核心：把整个 trends 表和 params 表合并
+    df_merged = pd.merge(df_params, df_trends, on='subject_id', how='inner')
     
+    # 💡 换回你最开始的 4 种经典行为形状
     archetypes = {
-        # 1. k 值最大的被试 -> 绝对的极端 U 型 (后期爆发恐慌)
-        "1. Max K (Extreme Gambler)": df_merged.sort_values('k', ascending=False).iloc[0],
-        
-        # 2. k 接近 1 的被试 -> 理性、平稳的无记忆性衰减
-        "2. Rational (k ≈ 1)": df_merged.iloc[(df_merged['k'] - 1.0).abs().argsort()[:1]].iloc[0],
-        
-        # 3. eta 值最大的被试 -> 期望值 E[r] 衰减最快，前期速度最快
-        "3. Max Eta (Rapid Memory Drop)": df_merged.sort_values('eta', ascending=False).iloc[0],
-        
-        # 4. rho 值最大的被试 -> 最容易受 Hazard 时间因素主导的人
-        "4. Max Rho (Hazard Dominated)": df_merged.sort_values('rho', ascending=False).iloc[0],
+        "1. Extreme U-Shape": df_merged.sort_values('quadratic_curve', ascending=False).iloc[0],
+        "2. Extreme Inv U-Shape": df_merged.sort_values('quadratic_curve', ascending=True).iloc[0],
+        "3. Continuous Slowing": df_merged.sort_values('linear_slope', ascending=False).iloc[0],
+        "4. Continuous Speeding": df_merged.sort_values('linear_slope', ascending=True).iloc[0],
     }
     
     fig, axes = plt.subplots(4, 2, figsize=(16, 18))
