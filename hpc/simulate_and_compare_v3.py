@@ -223,26 +223,28 @@ def main():
     print(f"--- Running Simulation Comparison for {args.fusion_mode.upper()} ---")
     hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}.csv'
     
-    # 💡 核心修改：读取神经网络估计出的参数，用网络自己的眼光来挑选最极端的代表！
+    # 读取原始 metadata (包含 order_sig) 和 神经网络的参数
+    df_trends = pd.read_csv(TRENDS_FILE)
     df_params = pd.read_csv(hdbm_param_file)
+    
+    # 💡 核心修复：把两个表合并！这样既有参数，又有 order_sig
+    df_merged = pd.merge(df_params, df_trends[['subject_id', 'order_sig']], on='subject_id', how='inner')
     
     archetypes = {
         # 1. k 值最大的被试 -> 绝对的极端 U 型 (后期爆发恐慌)
-        "1. Max K (Extreme Gambler)": df_params.sort_values('k', ascending=False).iloc[0],
+        "1. Max K (Extreme Gambler)": df_merged.sort_values('k', ascending=False).iloc[0],
         
         # 2. k 接近 1 的被试 -> 理性、平稳的无记忆性衰减
-        "2. Rational (k ≈ 1)": df_params.iloc[(df_params['k'] - 1.0).abs().argsort()[:1]].iloc[0],
+        "2. Rational (k ≈ 1)": df_merged.iloc[(df_merged['k'] - 1.0).abs().argsort()[:1]].iloc[0],
         
         # 3. eta 值最大的被试 -> 期望值 E[r] 衰减最快，前期速度最快
-        "3. Max Eta (Rapid Memory Drop)": df_params.sort_values('eta', ascending=False).iloc[0],
+        "3. Max Eta (Rapid Memory Drop)": df_merged.sort_values('eta', ascending=False).iloc[0],
         
         # 4. rho 值最大的被试 -> 最容易受 Hazard 时间因素主导的人
-        "4. Max Rho (Hazard Dominated)": df_params.sort_values('rho', ascending=False).iloc[0],
+        "4. Max Rho (Hazard Dominated)": df_merged.sort_values('rho', ascending=False).iloc[0],
     }
     
     fig, axes = plt.subplots(4, 2, figsize=(16, 18))
-    
-    
     
     
     export_data_list = [] 
