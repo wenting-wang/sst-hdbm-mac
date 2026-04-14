@@ -11,9 +11,15 @@ import warnings
 from joblib import Parallel, delayed
 import torch
 
-# 限制 PyTorch 内部线程，防止多核计算时冲突死锁
+# =============================================================================
+# --- USER CONFIGURATION ---
+# =============================================================================
+# Options: 'additive_1', 'additive_2', 'multiplicative'
+SELECTED_FUSION_MODE = 'additive_1'
+
+# =============================================================================
+
 torch.set_num_threads(1)
-# 屏蔽各种无害的 NaN 均值警告
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", message="Mean of empty slice")
 
@@ -86,7 +92,7 @@ def simulate_behavior(seq_int, pomdp_p, hdbm_p=None, fusion_mode='additive_2'):
     total_trials = len(seq_int)
     go_directions = np.random.choice([0, 1], size=total_trials)
     sim_rts = np.full(total_trials, np.nan)
-    sim_results = np.full(total_trials, 'nan', dtype=object) # NEW: 保存 trial 级别的 result
+    sim_results = np.full(total_trials, 'nan', dtype=object) 
     next_stop_ssd = 2
     
     if hdbm_p is None:
@@ -123,7 +129,6 @@ def simulate_behavior(seq_int, pomdp_p, hdbm_p=None, fusion_mode='additive_2'):
         
         hdbm = HDBM(**hdbm_kwargs)
             
-        hdbm = HDBM(**hdbm_kwargs)
         r_preds = hdbm.simu_task(seq_int, block_size=180)
 
         for t in range(total_trials):
@@ -197,25 +202,52 @@ def append_plot_data(data_list, arch, sub_id, metric, model_name, x_vals, mean_v
 
 def main():
     parser = argparse.ArgumentParser(description="Simulate and Compare HDBM vs Static POMDP")
-    parser.add_argument("--fusion_mode", type=str, default="additive_2", choices=['additive_1', 'additive_2', 'multiplicative'])
+    # 这里将 default 设置为了顶部的 SELECTED_FUSION_MODE 变量
+    parser.add_argument("--fusion_mode", type=str, default=SELECTED_FUSION_MODE, choices=['additive_1', 'additive_2', 'multiplicative'])
     args = parser.parse_args()
+    
+    # print(f"--- Running Simulation Comparison for {args.fusion_mode.upper()} ---")
+    # hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}.csv'
+    # df_trends = pd.read_csv(TRENDS_FILE)
+    
+    # archetypes = {
+    #     "1. Extreme U-Shape": df_trends.sort_values('quadratic_curve', ascending=False).iloc[0],
+    #     "2. Extreme Inv U-Shape": df_trends.sort_values('quadratic_curve', ascending=True).iloc[0],
+    #     "3. Continuous Slowing": df_trends.sort_values('linear_slope', ascending=False).iloc[0],
+    #     "4. Continuous Speeding": df_trends.sort_values('linear_slope', ascending=True).iloc[0],
+    # }
+    
+    # fig, axes = plt.subplots(4, 2, figsize=(16, 18))
+    
     
     print(f"--- Running Simulation Comparison for {args.fusion_mode.upper()} ---")
     hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}.csv'
-    df_trends = pd.read_csv(TRENDS_FILE)
+    
+    # 💡 核心修改：读取神经网络估计出的参数，用网络自己的眼光来挑选最极端的代表！
+    df_params = pd.read_csv(hdbm_param_file)
     
     archetypes = {
-        "1. Extreme U-Shape": df_trends.sort_values('quadratic_curve', ascending=False).iloc[0],
-        "2. Extreme Inv U-Shape": df_trends.sort_values('quadratic_curve', ascending=True).iloc[0],
-        "3. Continuous Slowing": df_trends.sort_values('linear_slope', ascending=False).iloc[0],
-        "4. Continuous Speeding": df_trends.sort_values('linear_slope', ascending=True).iloc[0],
+        # 1. k 值最大的被试 -> 绝对的极端 U 型 (后期爆发恐慌)
+        "1. Max K (Extreme Gambler)": df_params.sort_values('k', ascending=False).iloc[0],
+        
+        # 2. k 接近 1 的被试 -> 理性、平稳的无记忆性衰减
+        "2. Rational (k ≈ 1)": df_params.iloc[(df_params['k'] - 1.0).abs().argsort()[:1]].iloc[0],
+        
+        # 3. eta 值最大的被试 -> 期望值 E[r] 衰减最快，前期速度最快
+        "3. Max Eta (Rapid Memory Drop)": df_params.sort_values('eta', ascending=False).iloc[0],
+        
+        # 4. rho 值最大的被试 -> 最容易受 Hazard 时间因素主导的人
+        "4. Max Rho (Hazard Dominated)": df_params.sort_values('rho', ascending=False).iloc[0],
     }
     
     fig, axes = plt.subplots(4, 2, figsize=(16, 18))
+    
+    
+    
+    
     export_data_list = [] 
     param_export_list = [] 
     
-    # NEW: 用于存储 50 次模拟、每一次 trial 的最原始数据
     raw_50_sims_data = [] 
     
     for row_idx, (title, subj_data) in enumerate(archetypes.items()):
@@ -254,7 +286,6 @@ def main():
         hdbm_global_acc = [res[4] for res in results]
         hdbm_res_acc = [res[5] for res in results]
         
-        # NEW: 将 50 次模拟的所有 Trial 级别 RT 和 Result 存入原始收集器
         for sim_i in range(N_SIMULATIONS):
             for t in range(len(seq_int)):
                 raw_50_sims_data.append({
@@ -269,7 +300,6 @@ def main():
                     'E2E_HDBM_RT': hdbm_global_acc[sim_i][t]
                 })
 
-        # Calculate Means and Standard Deviations across 50 sims
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             
@@ -283,14 +313,13 @@ def main():
             hdbm_local_mean = np.nanmean(mat_h, axis=0)
             hdbm_local_std = np.nanstd(mat_h, axis=0)
 
-            # Global trend calculation (ignores NaN within the 50 sims at each trial)
             pomdp_global_mean = np.nanmean(np.array(pomdp_global_acc), axis=0)
             pomdp_global_std = np.nanstd(np.array(pomdp_global_acc), axis=0)
             
             hdbm_global_mean = np.nanmean(np.array(hdbm_global_acc), axis=0)
             hdbm_global_std = np.nanstd(np.array(hdbm_global_acc), axis=0)
 
-        # --- DATA RECORDING FOR CSV EXPORT (LOCAL & PLOT DATA) ---
+        # --- DATA RECORDING FOR CSV EXPORT ---
         x_local_real = range(1, len(real_local_mean)+1)
         x_local_p = range(1, len(pomdp_local_mean)+1)
         x_local_h = range(1, len(hdbm_local_mean)+1)
@@ -305,7 +334,6 @@ def main():
         append_plot_data(export_data_list, title, sub_id, 'Global', 'E2E HDBM (Expected)', x_trials, hdbm_global_mean, hdbm_global_std)
 
         # --- PLOTTING ---
-        # --- 1. LOCAL TREND (With Single Sims) ---
         ax_local = axes[row_idx, 0]
         ax_local.plot(x_local_real, real_local_mean, 'ko-', lw=2, label="Real Data")
         ax_local.fill_between(x_local_real, real_local_mean - real_local_std, real_local_mean + real_local_std, color='k', alpha=0.15)
@@ -313,7 +341,6 @@ def main():
         ax_local.plot(x_local_p, pomdp_local_mean, 'r--', lw=2, label="Static POMDP Baseline")
         ax_local.fill_between(x_local_p, pomdp_local_mean - pomdp_local_std, pomdp_local_mean + pomdp_local_std, color='r', alpha=0.15)
         
-        # HDBM 3条单次模拟细线放在 Local Trend 里
         ax_local.plot(range(1, len(hdbm_local_acc[0])+1), hdbm_local_acc[0], color='cyan', alpha=0.5, lw=1, label="E2E HDBM (Single Sims)")
         ax_local.plot(range(1, len(hdbm_local_acc[1])+1), hdbm_local_acc[1], color='cyan', alpha=0.5, lw=1)
         ax_local.plot(range(1, len(hdbm_local_acc[2])+1), hdbm_local_acc[2], color='cyan', alpha=0.5, lw=1)
@@ -327,17 +354,13 @@ def main():
         ax_local.grid(True, alpha=0.3)
         if row_idx == 0: ax_local.legend()
 
-        # --- 2. GLOBAL TREND (Clean, No Single Sims) ---
         ax_global = axes[row_idx, 1]
         
-        # Real Data 原始折线 (带真实的断点)
         ax_global.plot(x_trials, real_rts, 'k-', alpha=0.8, lw=1.5, label="Real Data")
         
-        # Static POMDP 原始均值折线 + 误差带
         ax_global.plot(x_trials, pomdp_global_mean, 'r--', lw=1.5, label="Static POMDP Baseline")
         ax_global.fill_between(x_trials, pomdp_global_mean - pomdp_global_std, pomdp_global_mean + pomdp_global_std, color='r', alpha=0.15)
         
-        # HDBM 期望粗线 + 误差带
         ax_global.plot(x_trials, hdbm_global_mean, 'b-', lw=2.5, label="E2E HDBM (Expected)")
         ax_global.fill_between(x_trials, hdbm_global_mean - hdbm_global_std, hdbm_global_mean + hdbm_global_std, color='b', alpha=0.15)
         
@@ -355,13 +378,11 @@ def main():
     plt.savefig(out_img, dpi=300)
     print(f"\n>>> Saved comparison plot to {out_img}")
     
-    # 1. 保存用于画图的 Aggregate Data
     df_export = pd.DataFrame(export_data_list)
     out_csv = out_dir / f'plot_data_{args.fusion_mode}.csv'
     df_export.to_csv(out_csv, index=False)
     print(f">>> Saved aggregated plotting data to {out_csv}")
     
-    # 2. 🔥 保存极其庞大详尽的 Trial-Level 原始模拟数据
     df_raw_sims = pd.DataFrame(raw_50_sims_data)
     out_raw_csv = out_dir / f'raw_50_simulations_{args.fusion_mode}.csv'
     df_raw_sims.to_csv(out_raw_csv, index=False)

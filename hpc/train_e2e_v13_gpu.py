@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore", message="Can't initialize NVML")
 # GLOBAL CONFIGURATION FOR CLUSTER RUNS
 # =============================================================================
 # Options: 'additive_1', 'additive_2', 'multiplicative'
-FUSION_MODE = 'additive_2'  
+FUSION_MODE = 'additive_1'  
 
 # Execution Options: 
 # 'ALL' : Train network -> Parameter Recovery -> Real Data Inference

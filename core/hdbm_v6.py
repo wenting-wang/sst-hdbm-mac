@@ -22,10 +22,13 @@ class HDBM:
 
         # 动态计算 Weibull Hazard: h(t) = (t / max_trials) ^ (k - 1)
         max_trials = 20
-        self.hazard_values = np.zeros(max_trials + 1)
+        scale_lambda = 8.0
+        self.hazard_values = np.zeros(max_trials + 1)            
         for i in range(1, max_trials + 1):
-            # i=0 保持为 0，防止 k<1 时出现 0的负数次方报错
-            self.hazard_values[i] = (i / max_trials) ** (self.k - 1)
+            # 保持纯粹的凸函数加速公式： (t / lambda) ^ (k - 1)
+            val = (i / scale_lambda) ** (self.k - 1)
+            # 防止后期数值爆炸，最高封顶为 1.0 (绝对恐慌)
+            self.hazard_values[i] = min(val, 1.0)
 
     def _get_hazard(self, run_length):
         idx = min(run_length, len(self.hazard_values) - 1)
