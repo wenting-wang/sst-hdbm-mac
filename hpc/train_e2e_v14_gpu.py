@@ -504,10 +504,10 @@ def train_pipeline(epochs=600, batch_size=128, patience=40):
     print(f"Using device: {device.type.upper()}")
     
     # Restored to '_finetune' format
-    dataset_files = list(BASE_DIR.glob(f"e2e_dataset_*_{FUSION_MODE}_finetune_part_*.pt"))
+    dataset_files = list(BASE_DIR.glob(f"e2e_dataset_*_{FUSION_MODE}_part_*.pt"))
     
     if not dataset_files:
-        single_file = BASE_DIR / f"e2e_dataset_5000_{FUSION_MODE}_finetune.pt"
+        single_file = BASE_DIR / f"e2e_dataset_5000_{FUSION_MODE}.pt"
         if single_file.exists():
             dataset_files = [single_file]
         else:
