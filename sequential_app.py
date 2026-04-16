@@ -85,7 +85,7 @@ class HDBM:
 # ==========================================
 st.set_page_config(layout="wide", page_title="HDBM State Viewer")
 
-st.title("HDBM Internal State Visualization")
+st.title("Hybrid Sequential Effect Visualization")
 # Updated subheader
 st.subheader("Sequence: 20 Go -> 1 Stop -> 1 Go")
 
