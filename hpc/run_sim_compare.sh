@@ -29,8 +29,8 @@ cd "${SCRATCH_DIRECTORY}"
 cp -r "${SLURM_SUBMIT_DIR}/core/"    .
 cp "${SLURM_SUBMIT_DIR}/subject_local_trends.csv" .
 cp "${SLURM_SUBMIT_DIR}/pomdp_posterior.csv" .
-cp "${SLURM_SUBMIT_DIR}/est_param_additive_1.csv" .
-# cp "${SLURM_SUBMIT_DIR}/est_param_additive_2.csv" .
+# cp "${SLURM_SUBMIT_DIR}/est_param_additive_1.csv" .
+cp "${SLURM_SUBMIT_DIR}/est_param_additive_2.csv" .
 # cp "${SLURM_SUBMIT_DIR}/est_param_multiplicative.csv" .
 cp "${SLURM_SUBMIT_DIR}/orders.csv" .
 cp "${SLURM_SUBMIT_DIR}/simulate_and_compare_v4.py" .

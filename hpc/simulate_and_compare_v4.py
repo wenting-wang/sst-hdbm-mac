@@ -15,7 +15,7 @@ import torch
 # --- USER CONFIGURATION ---
 # =============================================================================
 # Options: 'additive_1', 'additive_2', 'multiplicative'
-SELECTED_FUSION_MODE = 'additive_1'
+SELECTED_FUSION_MODE = 'additive_2'
 
 # =============================================================================
 
@@ -210,7 +210,7 @@ def main():
     
     print(f"--- Running Simulation Comparison for {args.fusion_mode.upper()} ---")
     # [MODIFIED] To match your exact GPU script output filename
-    hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}_finetune.csv'
+    hdbm_param_file = BASE_DIR / f'est_param_{args.fusion_mode}.csv'
     
     df_trends = pd.read_csv(TRENDS_FILE)
     df_params = pd.read_csv(hdbm_param_file)
