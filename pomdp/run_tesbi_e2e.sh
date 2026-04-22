@@ -33,21 +33,21 @@ set -eo pipefail
 # 1. PIPELINE CONFIGURATION
 # Modify these hyperparameters directly here to avoid touching the python code.
 # ==============================================================================
-##### TEST
-N_SIMS=30              # Total simulated datasets to generate using CPUs
-EPOCHS=5                # Total training epochs for the End-to-End model
-BATCH_SIZE=128            # Batch size for GPU training
-REC_K=5                  # Number of parameter recovery test cases
-REC_NUM_POST=10         # Number of posterior samples per recovery/inference
-SST_FOLDER="/u/wenwang/data/sst_valid_base" # Path to your real dataset directory
-
-# ###### REAL RUN
-# N_SIMS=30000              # Total simulated datasets to generate using CPUs
-# EPOCHS=100                # Total training epochs for the End-to-End model
+# ##### TEST
+# N_SIMS=30              # Total simulated datasets to generate using CPUs
+# EPOCHS=5                # Total training epochs for the End-to-End model
 # BATCH_SIZE=128            # Batch size for GPU training
-# REC_K=20                  # Number of parameter recovery test cases
-# REC_NUM_POST=1000         # Number of posterior samples per recovery/inference
+# REC_K=5                  # Number of parameter recovery test cases
+# REC_NUM_POST=10         # Number of posterior samples per recovery/inference
 # SST_FOLDER="/u/wenwang/data/sst_valid_base" # Path to your real dataset directory
+
+###### REAL RUN
+N_SIMS=30000              # Total simulated datasets to generate using CPUs
+EPOCHS=1000                # Total training epochs for the End-to-End model
+BATCH_SIZE=128            # Batch size for GPU training
+REC_K=200                 # Number of parameter recovery test cases
+REC_NUM_POST=1000         # Number of posterior samples per recovery/inference
+SST_FOLDER="/u/wenwang/data/sst_valid_base" # Path to your real dataset directory
 
 # ==============================================================================
 # 2. ENVIRONMENT SETUP
@@ -118,12 +118,12 @@ echo ">>> Copying results back to permanent storage..."
 FINAL_OUT_DIR="${SLURM_SUBMIT_DIR}/outputs_run_${SLURM_JOB_ID}"
 mkdir -p "${FINAL_OUT_DIR}"
 
-# The python script dumps artifacts in 'outputs/tesbi_e2e/' inside scratch
-if [ -d "outputs/tesbi_e2e/" ]; then
-    cp -r outputs/tesbi_e2e/* "${FINAL_OUT_DIR}/"
+# The python script dumps artifacts in 'outputs/' inside scratch
+if [ -d "outputs/" ]; then
+    cp -r outputs/* "${FINAL_OUT_DIR}/"
     echo "Results successfully copied to: ${FINAL_OUT_DIR}"
 else
-    echo "WARNING: Expected output directory 'outputs/tesbi_e2e/' not found!"
+    echo "WARNING: Expected output directory 'outputs/' not found!"
     echo "Please inspect scratch directory manually: ${SCRATCH_DIRECTORY}"
 fi
 
