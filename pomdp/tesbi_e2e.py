@@ -28,6 +28,8 @@ import multiprocessing
 import gc
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+import zipfile
+import tempfile
 
 import pandas as pd
 import numpy as np
@@ -59,7 +61,8 @@ except (ValueError, TypeError):
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-USE_PREPROCESSING = False
+USE_PREPROCESSING = True # when use  real abcd data
+# USE_PREPROCESSING = False # when use example data
 
 PARAM_RANGES = {
     "q_d_n": (0.0, 1.0),
@@ -83,7 +86,7 @@ FIXED_PARAMS = {
 
 RESULT_LEVELS = ["GS", "GE", "GM", "SS", "SE"]
 
-ART_DIR = Path("outputs/tesbi_e2e/")
+ART_DIR = Path("outputs/")
 DATASET_PATH = ART_DIR / "simulated_dataset.pt"
 MODEL_PATH = ART_DIR / "amortized_inference_net.pth"
 RECOVERY_CSV = ART_DIR / "params_recovery.csv"
@@ -364,45 +367,90 @@ def stage_inference(sst_folder: str, glob_pat: str, num_samples: int):
     out_root = ART_DIR / "subjects"
     out_root.mkdir(parents=True, exist_ok=True)
     
-    files = list(Path(sst_folder).glob(glob_pat))
-    print(f"\n [Inference] Processing {len(files)} real subjects on {str(device).upper()}...")
+    folder_path = Path(sst_folder)
+    zip_files = list(folder_path.glob("*.zip"))
+    csv_files = list(folder_path.glob(glob_pat))
     
     model = EndToEndTeSBI(in_dim=18, param_dim=len(PARAM_ORDER)).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.eval()
     
     summaries = []
-    for i, fp in enumerate(files):
-        try:
-            parts = fp.name.split('_')
-            sid = parts[1] if len(parts) > 1 else fp.stem
-            year = parts[2] if len(parts) > 2 else "unknown"
+    
+    if zip_files:
+        print(f"\n [Inference] Detected ZIP files. Processing {len(zip_files)} real subjects on {str(device).upper()}...")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for fp in zip_files:
+                try:
+                    subject_id = fp.name.split('_baseline_')[0]
+                    with zipfile.ZipFile(fp, 'r') as zr:
+                        zr.extractall(tmpdir)
+                    
+                    extracted_csvs = list(Path(tmpdir).rglob(f"*{subject_id}*.csv"))
+                    if not extracted_csvs:
+                        continue
+                        
+                    target_csv = extracted_csvs[0]
+                    df_obs = preprocessing(str(target_csv)) if USE_PREPROCESSING else pd.read_csv(str(target_csv))
+                    
+                    X = build_per_trial_features(df_obs)
+                    tensor_x = torch.tensor(X[None, ...], dtype=torch.float32).to(device)
 
-            df_obs = preprocessing(str(fp)) if USE_PREPROCESSING else pd.read_csv(str(fp))
-            X = build_per_trial_features(df_obs)
-            tensor_x = torch.tensor(X[None, ...], dtype=torch.float32).to(device)
+                    with torch.no_grad():
+                        posterior_dist = model(tensor_x)
+                        samples_scaled = posterior_dist.sample((num_samples,))[:, 0, :].cpu().numpy()
+                    
+                    rows = [scaled_to_dict(s) for s in samples_scaled]
+                    post_df = pd.DataFrame(rows)
+                    summ = post_df.describe(percentiles=[0.05, 0.5, 0.95]).T[["mean", "std", "5%", "50%", "95%"]]
+                    
+                    subj_dir = out_root / f"{subject_id}_baseline"
+                    subj_dir.mkdir(exist_ok=True)
+                    post_df.to_csv(subj_dir / "posterior_samples.csv", index=False)
+                    summ.to_csv(subj_dir / "posterior_summary.csv")
+                    
+                    s_row = summ.copy(); s_row["subject_id"] = subject_id; s_row["subject_year"] = "baseline"
+                    summaries.append(s_row.reset_index())
+                    
+                    target_csv.unlink()
+                except Exception as e:
+                    print(f" [Error] {fp.name}: {e}")
+    else:
+        print(f"\n [Inference] Processing {len(csv_files)} real subjects from CSV files on {str(device).upper()}...")
+        for fp in csv_files:
+            try:
+                parts = fp.name.split('_')
+                sid = parts[1] if len(parts) > 1 else fp.stem
+                year = parts[2] if len(parts) > 2 else "unknown"
 
-            with torch.no_grad():
-                posterior_dist = model(tensor_x)
-                samples_scaled = posterior_dist.sample((num_samples,))[:, 0, :].cpu().numpy()
-            
-            rows = [scaled_to_dict(s) for s in samples_scaled]
-            post_df = pd.DataFrame(rows)
-            summ = post_df.describe(percentiles=[0.05, 0.5, 0.95]).T[["mean", "std", "5%", "50%", "95%"]]
-            
-            subj_dir = out_root / f"{sid}_{year}"
-            subj_dir.mkdir(exist_ok=True)
-            post_df.to_csv(subj_dir / "posterior_samples.csv", index=False)
-            summ.to_csv(subj_dir / "posterior_summary.csv")
-            
-            s_row = summ.copy(); s_row["subject_id"] = sid; s_row["subject_year"] = year
-            summaries.append(s_row.reset_index())
-        except Exception as e:
-            print(f" [Error] {fp.name}: {e}")
+                df_obs = preprocessing(str(fp)) if USE_PREPROCESSING else pd.read_csv(str(fp))
+                X = build_per_trial_features(df_obs)
+                tensor_x = torch.tensor(X[None, ...], dtype=torch.float32).to(device)
+
+                with torch.no_grad():
+                    posterior_dist = model(tensor_x)
+                    samples_scaled = posterior_dist.sample((num_samples,))[:, 0, :].cpu().numpy()
+                
+                rows = [scaled_to_dict(s) for s in samples_scaled]
+                post_df = pd.DataFrame(rows)
+                summ = post_df.describe(percentiles=[0.05, 0.5, 0.95]).T[["mean", "std", "5%", "50%", "95%"]]
+                
+                subj_dir = out_root / f"{sid}_{year}"
+                subj_dir.mkdir(exist_ok=True)
+                post_df.to_csv(subj_dir / "posterior_samples.csv", index=False)
+                summ.to_csv(subj_dir / "posterior_summary.csv")
+                
+                s_row = summ.copy(); s_row["subject_id"] = sid; s_row["subject_year"] = year
+                summaries.append(s_row.reset_index())
+            except Exception as e:
+                print(f" [Error] {fp.name}: {e}")
 
     if summaries:
         pd.concat(summaries).to_csv(POST_SUMMARY_CSV, index=False)
         print(f"\n [Inference] All summaries saved to {POST_SUMMARY_CSV}")
+    else:
+        print("\n [Inference] No summaries generated. Check if files were properly read.")
+
 
 # ==============================================================================
 # MAIN
