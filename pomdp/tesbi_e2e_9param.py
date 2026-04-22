@@ -16,6 +16,8 @@ import multiprocessing
 import gc
 from pathlib import Path
 from typing import Dict, Optional
+import zipfile
+import tempfile
 
 import pandas as pd
 import numpy as np
@@ -25,21 +27,31 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from joblib import Parallel, delayed
 import zuko
 
-# Custom imports
+# ==============================================================================
+# PATH CONFIGURATION
+# ==============================================================================
+current_dir = Path(__file__).resolve().parent
+sys.path.append(str(current_dir.parent))
+
+# Local modules
 from utils.preprocessing import preprocessing
 from core.models import POMDP
 from core import simulation
 
+# ==============================================================================
+# CPU CORES SETUP (No global GPU init to prevent multi-processing deadlock)
+# ==============================================================================
 try:
     N_JOBS = int(os.environ.get("SLURM_CPUS_PER_TASK"))
 except (ValueError, TypeError):
     N_JOBS = multiprocessing.cpu_count()
 
-USE_PREPROCESSING = False 
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+USE_PREPROCESSING = True # when use  real abcd data
+# USE_PREPROCESSING = False # when use example data
 
-# ==============================================================================
-# CONFIGURATION: 9 PARAMETERS
-# ==============================================================================
 PARAM_RANGES = {
     "q_d_n": (0.0, 1.0),
     "q_d":   (0.5, 1.0),
