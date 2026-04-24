@@ -12,15 +12,31 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from utils.preprocessing import preprocessing
 from utils.metrics import get_distance
-from tesbi_e2e_9param import (
-    scaled_to_dict, PARAM_ORDER, FIXED_PARAMS, simulate_data, 
-    USE_PREPROCESSING, PARAM_RANGES
+from tesbi_e2e_10param import (
+    scaled_to_dict, PARAM_ORDER, FIXED_PARAMS, USE_PREPROCESSING, PARAM_RANGES
 )
+from core.models import POMDP
+from core import simulation
 
-# Configuration
-PARAMS_CSV = Path("./outputs/params_posteriors_9p.csv")
-OUTPUT_PPC = Path("./outputs/ppc_metrics_9p.csv")
-OUTPUT_TOP5 = Path("./outputs/top_5_percent_subjects.csv")
+PARAMS_CSV = Path("./outputs/params_posteriors_10p.csv")
+OUTPUT_PPC = Path("./outputs/ppc_metrics_10p.csv")
+OUTPUT_SUMMARY = Path("./outputs/ppc_model_summary_10p.csv")
+
+def run_simulation_multi(params, n_repeat=20, seed_base=2026):
+    """Run simulation 20 times to generate a stable large sample for distance calculation."""
+    pomdp = POMDP(**params)
+    pomdp.value_iteration_tensor()
+    
+    all_rows = []
+    for i in range(n_repeat):
+        np.random.seed(seed_base + i)
+        out = simulation.simu_task(pomdp)
+        for t, row in enumerate(out):
+            all_rows.append({
+                'result': row[0], 'rt': row[1], 'ssd': row[2]
+            })
+    return pd.DataFrame(all_rows)
+
 
 def run_ppc(fp: Path, df_params: pd.DataFrame):
     filename = fp.name
@@ -65,13 +81,11 @@ def run_ppc(fp: Path, df_params: pd.DataFrame):
         if row[param_col] in PARAM_ORDER:
             theta[row[param_col]] = float(row["mean"])
             
-    # BOUNDARY CLIPPING: Prevent probabilities from being negative or > 1
-    # Prevent costs/temperatures from being <= 0
+    # Boundary clipping
     for k in PARAM_ORDER:
         if k in theta:
             lo, hi = PARAM_RANGES[k]
             if k.startswith("q_"):
-                # Strict clipping for probabilities to avoid 0.0 or 1.0 edge cases in Numpy
                 theta[k] = float(np.clip(theta[k], max(lo, 1e-5), min(hi, 1.0 - 1e-5)))
             else:
                 theta[k] = float(np.clip(theta[k], lo, hi))
@@ -81,17 +95,17 @@ def run_ppc(fp: Path, df_params: pd.DataFrame):
     if not theta:
         return {"filename": filename, "error": "Parameters dictionary is empty"}
         
-    # WRAP SIMULATOR IN TRY-EXCEPT to prevent pool crash
     try:
-        df_sim = simulate_data(theta, seed=2026)
+        # Replaced single simulation with 20x simulation
+        df_sim_20x = run_simulation_multi(theta, n_repeat=20)
     except Exception as e:
         return {"filename": filename, "error": f"Simulation crashed: {e}"}
         
-    if df_sim is None or df_sim.empty:
+    if df_sim_20x is None or df_sim_20x.empty:
         return {"filename": filename, "error": "Simulation returned empty data"}
         
     try:
-        metrics = get_distance(df_obs, df_sim)
+        metrics = get_distance(df_obs, df_sim_20x)
     except Exception as e:
         return {"filename": filename, "error": f"Distance calc crashed: {e}"}
         
@@ -107,7 +121,8 @@ def run_ppc(fp: Path, df_params: pd.DataFrame):
     res["total_distance"] = total_distance
     
     return res
-
+    
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sst_folder", type=str, required=True, help="Folder containing real CSVs")
@@ -116,22 +131,17 @@ if __name__ == "__main__":
     data_dir = Path(args.sst_folder)
     
     if not PARAMS_CSV.exists():
-        print(f"Error: Parameter file {PARAMS_CSV} not found. Ensure Step 1 completed successfully.")
+        print(f"Error: Parameter file {PARAMS_CSV} not found.")
         sys.exit(1)
 
     df_params = pd.read_csv(PARAMS_CSV, dtype={"subject_id": str})
-    
     files = list(data_dir.rglob("*.csv")) + list(data_dir.glob("*.zip"))
     files = list(set(files)) 
 
     results = []
     errors = []
     
-    print(f"Starting PPC for {len(files)} files found in {data_dir}...")
-    
-    if len(files) == 0:
-        print(f"CRITICAL ERROR: No .csv or .zip files found in {data_dir}!")
-        sys.exit(1)
+    print(f"Starting PPC for {len(files)} files...")
     
     with ProcessPoolExecutor() as executor:
         futures = {executor.submit(run_ppc, f, df_params): f for f in files}
@@ -142,24 +152,14 @@ if __name__ == "__main__":
             else:
                 errors.append(res)
                 
-    if not results:
-        print("CRITICAL ERROR: ALL subjects failed during the PPC stage.")
-        print("First 5 error logs for debugging:")
-        for err in errors[:5]:
-            print(f"  - {err.get('filename')}: {err.get('error')}")
-        sys.exit(1)
-        
-    if errors:
-        print(f"Warning: {len(errors)} subjects failed and were skipped.")
-                
     df_res = pd.DataFrame(results)
     df_res = df_res.sort_values(by="total_distance", ascending=True)
     df_res.to_csv(OUTPUT_PPC, index=False)
     
-    top_5_count = max(1, int(len(df_res) * 0.05))
-    df_top5 = df_res.head(top_5_count)
-    df_top5.to_csv(OUTPUT_TOP5, index=False)
+    numeric_cols = ["total_distance"] + [col for col in df_res.columns if col.startswith("dis_")]
+    df_summary = df_res[numeric_cols].mean().to_frame(name="mean_distance").T
+    df_summary.insert(0, "model_name", "10_Param")
+    df_summary.insert(1, "n_subjects", len(df_res))
+    df_summary.to_csv(OUTPUT_SUMMARY, index=False)
     
-    best_subject = df_top5.iloc[0]['subject_id']
-    print(f"Top 5% threshold calculated. {top_5_count} subjects saved to {OUTPUT_TOP5}.")
-    print(f"Absolute Best Fitting Subject: {best_subject} (Distance: {df_top5.iloc[0]['total_distance']:.4f})")
+    print(f"PPC Completed. Results saved to {OUTPUT_PPC}. Summary saved to {OUTPUT_SUMMARY}.")

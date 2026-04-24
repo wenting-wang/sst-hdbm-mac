@@ -113,8 +113,13 @@ def simu_trial(model, true_go_state, true_stop_state, ssd, verbose=False):
         policy_seq.append(action)
 
         if action != 2 and not ever_act:
+            # simu_action = action
+            # rt = t_step
+            # ever_act = True
+            
             simu_action = action
-            rt = t_step
+            # The decision was made at t_step. The actual physical keypress happens tau steps later.
+            rt = t_step + model.tau  
             ever_act = True
 
     # --- Outcome decoding ---

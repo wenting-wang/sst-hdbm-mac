@@ -1,5 +1,5 @@
 """
-plot_corner.py
+plot_corner_10p.py
 """
 import argparse
 import torch
@@ -12,8 +12,8 @@ from utils.preprocessing import preprocessing
 import corner
 from pathlib import Path
 
-# Import 9-param model architecture and features mapping
-from tesbi_e2e_9param import (
+# CHANGED: Import from 10-param script
+from tesbi_e2e_10param import (
     EndToEndTeSBI, build_per_trial_features, PARAM_ORDER, 
     unscale_params, LOG_PARAMS, USE_PREPROCESSING
 )
@@ -22,8 +22,10 @@ def extract_and_plot(best_subject_id: str, data_filename: str, data_dir: Path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Generating 10,000 samples for subject {best_subject_id} on {device}...")
     
-    model = EndToEndTeSBI(in_dim=18, d_model=128, n_heads=8, n_layers=4, param_dim=9).to(device)
-    model.load_state_dict(torch.load("outputs/amortized_inference_net_9p.pth", map_location=device))
+    # CHANGED: param_dim=10
+    model = EndToEndTeSBI(in_dim=18, d_model=128, n_heads=8, n_layers=4, param_dim=10).to(device)
+    # CHANGED: Load 10p weights
+    model.load_state_dict(torch.load("outputs/amortized_inference_net_10p.pth", map_location=device))
     model.eval()
     
     # Match file (supports nested CSV or ZIP)
@@ -68,7 +70,8 @@ def extract_and_plot(best_subject_id: str, data_filename: str, data_dir: Path):
             
     df_samples = pd.DataFrame(final_samples, columns=PARAM_ORDER)
 
-    csv_out_path = Path(f"outputs/posterior_samples_{best_subject_id}.csv")
+    # CHANGED: Added 10p suffix to outputs
+    csv_out_path = Path(f"outputs/posterior_samples_10p_{best_subject_id}.csv")
     df_samples.to_csv(csv_out_path, index=False)
     print(f"Raw posterior samples saved to {csv_out_path}")
     
@@ -86,7 +89,8 @@ def extract_and_plot(best_subject_id: str, data_filename: str, data_dir: Path):
         fill_contours=True,
     )
     
-    out_path = Path(f"outputs/corner_{best_subject_id}.png")
+    # CHANGED: Added 10p suffix to outputs
+    out_path = Path(f"outputs/corner_10p_{best_subject_id}.png")
     fig.savefig(out_path, dpi=300, bbox_inches='tight')
     print(f"Corner plot saved successfully to {out_path}")
 
@@ -97,7 +101,8 @@ if __name__ == "__main__":
     
     data_dir = Path(args.sst_folder)
     
-    top_df = pd.read_csv("outputs/top_5_percent_subjects.csv")
-    best_row = top_df.iloc[0]
+    # CHANGED: Directly read ppc_metrics_10p.csv (it is already sorted by total_distance ascending in ppc.py)
+    ppc_df = pd.read_csv("outputs/ppc_metrics_10p.csv")
+    best_row = ppc_df.iloc[0] # Index 0 is the absolute best fitting subject
     
     extract_and_plot(str(best_row['subject_id']), best_row['filename'], data_dir)
