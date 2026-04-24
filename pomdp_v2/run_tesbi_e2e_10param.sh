@@ -19,6 +19,19 @@
 
 set -eo pipefail
 
+# # ==============================================================================
+# # 0. TEST PIPELINE CONFIGURATION
+# # ==============================================================================
+# N_SIMS=10             
+# EPOCHS=2               
+# BATCH_SIZE=128            
+# REC_K=5                 
+# REC_NUM_POST=10         
+
+# # Update these two paths to match your cluster directories
+# SST_FOLDER="/u/wenwang/data/test" 
+# FILTER_CSV="/u/wenwang/data/clinical_behavior.csv"
+
 # ==============================================================================
 # 1. PIPELINE CONFIGURATION
 # ==============================================================================
@@ -30,7 +43,7 @@ REC_NUM_POST=1000
 
 # Update these two paths to match your cluster directories
 SST_FOLDER="/u/wenwang/data/sst_valid_base" 
-FILTER_CSV="/u/wenwang/data/clinical_behavior.csv" # Change this to your real filter file path!
+FILTER_CSV="/u/wenwang/data/clinical_behavior.csv"
 
 # ==============================================================================
 # 2. ENVIRONMENT SETUP
@@ -66,8 +79,9 @@ echo "Staging files to scratch directory: ${SCRATCH_DIRECTORY}"
 # Copy all 10p files to scratch
 cp "${SLURM_SUBMIT_DIR}/tesbi_e2e_10param.py"    "${SCRATCH_DIRECTORY}/"
 cp "${SLURM_SUBMIT_DIR}/ppc_10p.py"              "${SCRATCH_DIRECTORY}/"
-cp "${SLURM_SUBMIT_DIR}/plot_corner.py"          "${SCRATCH_DIRECTORY}/"
+cp "${SLURM_SUBMIT_DIR}/plot_corner_10p.py"          "${SCRATCH_DIRECTORY}/"
 cp "${SLURM_SUBMIT_DIR}/fig_ppc_reps_10p.py"     "${SCRATCH_DIRECTORY}/"
+cp "${SLURM_SUBMIT_DIR}/fig_params_recovery_10p.py" "${SCRATCH_DIRECTORY}/"
 cp -r "${SLURM_SUBMIT_DIR}/core/"                "${SCRATCH_DIRECTORY}/"
 cp -r "${SLURM_SUBMIT_DIR}/utils/"               "${SCRATCH_DIRECTORY}/"
 
@@ -91,6 +105,12 @@ srun python3 -u tesbi_e2e_10param.py \
     --sst_folder "${SST_FOLDER}"
 
 echo -e "\n================================================================"
+echo ">>> STEP 1.5: Plotting Parameter Recovery Grid at $(date)"
+echo "================================================================"
+
+srun python3 -u fig_params_recovery_10p.py --out_dir "outputs"
+
+echo -e "\n================================================================"
 echo ">>> STEP 2: Running Posterior Predictive Checks at $(date)"
 echo "================================================================"
 
@@ -99,8 +119,8 @@ srun python3 -u ppc_10p.py --sst_folder "${SST_FOLDER}"
 echo -e "\n================================================================"
 echo ">>> STEP 3: Plotting Corner Matrix at $(date)"
 echo "================================================================"
-# Assuming plot_corner.py accepts --sst_folder. If it requires --csv, adjust as needed.
-srun python3 -u plot_corner.py --sst_folder "${SST_FOLDER}" || echo "Corner plot skipped or failed."
+# Assuming plot_corner_10p.py accepts --sst_folder. If it requires --csv, adjust as needed.
+srun python3 -u plot_corner_10p.py --sst_folder "${SST_FOLDER}" || echo "Corner plot skipped or failed."
 
 echo -e "\n================================================================"
 echo ">>> STEP 4: Plotting PPC Representations (Good/Mod/Poor) at $(date)"
