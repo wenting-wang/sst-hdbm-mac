@@ -31,6 +31,7 @@ temp_args, _ = temp_parser.parse_known_args()
 m = importlib.import_module(temp_args.model_config)
 USE_PREPROCESSING = m.USE_PREPROCESSING
 MODEL_TAG = m.MODEL_TAG
+PARAM_RANGES = m.PARAM_RANGES 
 
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
@@ -223,7 +224,15 @@ def plot_model_fit(subjects, sst_folder, params_file, output_path):
         if not params:
             print(f"  -> WARNING: Missing posterior parameters for {sid}.")
             continue
-            
+        
+        for k in params:
+            if k in PARAM_RANGES:
+                lo, hi = PARAM_RANGES[k]
+                if k.startswith("q_"):
+                    params[k] = float(np.clip(params[k], max(lo, 1e-5), min(hi, 1.0 - 1e-5)))
+                else:
+                    params[k] = float(np.clip(params[k], lo, hi))
+                        
         df_sim = run_simulation_multi(params, n_repeat=N_REPEAT)
 
         ax = axs[0, col_idx]

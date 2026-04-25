@@ -19,32 +19,34 @@
 
 set -eo pipefail
 
-# # ==============================================================================
-# # 0. TEST PIPELINE CONFIGURATION
-# # ==============================================================================
-# N_SIMS=10             
-# EPOCHS=2               
-# BATCH_SIZE=128            
-# REC_K=5                 
-# REC_NUM_POST=10         
-
-# # Update these two paths to match your cluster directories
-# SST_FOLDER="/u/wenwang/data/test" 
-# FILTER_CSV="/u/wenwang/data/clinical_behavior.csv"
-
 # ==============================================================================
-# 1. PIPELINE CONFIGURATION
+# 0. TEST PIPELINE CONFIGURATION
 # ==============================================================================
-N_SIMS=100000             
-EPOCHS=1000               
+N_SIMS=10             
+EPOCHS=2               
 BATCH_SIZE=128            
-REC_K=200                 
-REC_NUM_POST=1000         
+REC_K=5                 
+REC_NUM_POST=10         
 
 # Update these two paths to match your cluster directories
-MODEL_FILE="tesbi_e2e_7p_v1"
-SST_FOLDER="/u/wenwang/data/sst_valid_base" 
+MODEL_FILE="tesbi_e2e_test"
+SST_FOLDER="/u/wenwang/data/test" 
 FILTER_CSV="/u/wenwang/data/clinical_behavior.csv"
+
+
+# # ==============================================================================
+# # 1. PIPELINE CONFIGURATION
+# # ==============================================================================
+# N_SIMS=100000             
+# EPOCHS=1000               
+# BATCH_SIZE=128            
+# REC_K=200                 
+# REC_NUM_POST=1000         
+
+# # Update these two paths to match your cluster directories
+# MODEL_FILE="tesbi_e2e_7p_v1"
+# SST_FOLDER="/u/wenwang/data/sst_valid_base" 
+# FILTER_CSV="/u/wenwang/data/clinical_behavior.csv"
 
 # ==============================================================================
 # 2. ENVIRONMENT SETUP
