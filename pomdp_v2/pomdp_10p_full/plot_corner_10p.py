@@ -15,7 +15,7 @@ from pathlib import Path
 # CHANGED: Import from 10-param script
 from tesbi_e2e_10param import (
     EndToEndTeSBI, build_per_trial_features, PARAM_ORDER, 
-    unscale_params, LOG_PARAMS, USE_PREPROCESSING
+    unscale_params, LOG_PARAMS, USE_PREPROCESSING, PARAM_RANGES
 )
 
 def extract_and_plot(best_subject_id: str, data_filename: str, data_dir: Path):
@@ -75,10 +75,16 @@ def extract_and_plot(best_subject_id: str, data_filename: str, data_dir: Path):
     df_samples.to_csv(csv_out_path, index=False)
     print(f"Raw posterior samples saved to {csv_out_path}")
     
+    plot_ranges = []
+    for k in PARAM_ORDER:
+        lo, hi = PARAM_RANGES[k]
+        plot_ranges.append((lo, hi))
+    
     print("Plotting corner matrix...")
     fig = corner.corner(
         df_samples,
         labels=PARAM_ORDER,
+        range=plot_ranges,
         quantiles=[0.05, 0.5, 0.95],
         show_titles=True,
         title_kwargs={"fontsize": 10},

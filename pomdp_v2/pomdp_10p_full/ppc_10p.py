@@ -126,6 +126,7 @@ def run_ppc(fp: Path, df_params: pd.DataFrame):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sst_folder", type=str, required=True, help="Folder containing real CSVs")
+    parser.add_argument("--filter_csv", type=str, required=True)
     args = parser.parse_args()
     
     data_dir = Path(args.sst_folder)
@@ -151,15 +152,20 @@ if __name__ == "__main__":
                 results.append(res)
             else:
                 errors.append(res)
+    
+    df_filter = pd.read_csv(args.filter_csv)
+    valid_ids = df_filter['subject_id'].astype(str).str.replace('NDAR_', '', regex=False).unique()
                 
     df_res = pd.DataFrame(results)
+    df_res['subject_id'] = df_res['subject_id'].astype(str).str.replace('NDAR_', '', regex=False)
+    df_res = df_res[df_res['subject_id'].isin(valid_ids)]
     df_res = df_res.sort_values(by="total_distance", ascending=True)
     df_res.to_csv(OUTPUT_PPC, index=False)
     
     numeric_cols = ["total_distance"] + [col for col in df_res.columns if col.startswith("dis_")]
     df_summary = df_res[numeric_cols].mean().to_frame(name="mean_distance").T
-    df_summary.insert(0, "model_name", "10_Param")
+    df_summary.insert(0, "model_name", "10_Param_Filtered")
     df_summary.insert(1, "n_subjects", len(df_res))
     df_summary.to_csv(OUTPUT_SUMMARY, index=False)
     
-    print(f"PPC Completed. Results saved to {OUTPUT_PPC}. Summary saved to {OUTPUT_SUMMARY}.")
+    print(f"PPC Completed. Filtered for {len(df_res)} subjects found in clinical_behavior.csv")

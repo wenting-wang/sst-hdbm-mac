@@ -114,7 +114,9 @@ echo -e "\n================================================================"
 echo ">>> STEP 2: Running Posterior Predictive Checks at $(date)"
 echo "================================================================"
 
-srun python3 -u ppc_10p.py --sst_folder "${SST_FOLDER}"
+srun python3 -u ppc_10p.py \
+    --sst_folder "${SST_FOLDER}" \
+    --filter_csv "${FILTER_CSV}"
 
 echo -e "\n================================================================"
 echo ">>> STEP 3: Plotting Corner Matrix at $(date)"

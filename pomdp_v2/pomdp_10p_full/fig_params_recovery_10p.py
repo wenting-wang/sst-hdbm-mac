@@ -11,6 +11,7 @@ from matplotlib.offsetbox import AnchoredText
 import numpy as np
 import pandas as pd
 import traceback
+from tesbi_e2e_10param import PARAM_RANGES
 
 # ==========================================
 # 1. CONFIGURATION
@@ -142,6 +143,12 @@ def plot_recovery_grid(df, params, output_path):
             x_plot, y_plot = x, y
 
         all_vals = np.concatenate([x_plot, y_plot])
+        
+        lo, hi = PARAM_RANGES[param]
+        lims = [lo, hi]
+        
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
         
         if is_log_param:
             valid_vals = all_vals[all_vals > 0]
