@@ -52,27 +52,27 @@ except (ValueError, TypeError):
 USE_PREPROCESSING = True # when use  real abcd data
 # USE_PREPROCESSING = False # when use example data
 
-MODEL_TAG = "7p_v1"
+MODEL_TAG = "7p_v2"
 
 PARAM_RANGES = {
     "q_d_n": (0.0, 1.0),
     "q_d":   (0.5, 1.0),
-    "q_s_n": (0.0, 1.0),
     "q_s":   (0.5, 1.0),
-    "cost_stop_error": (0.01, 2.0),
+    "cost_stop_error": (0.01, 3.0),
     "cost_time":       (0.0001, 0.05),  
-    "tau":   (4, 16)            # Added NDT: 100ms to 400ms
+    "tau":   (4, 16),
+    "inv_temp": (10, 100)
 }
 
-LINEAR_PARAMS = ["q_d_n", "q_d", "q_s_n", "q_s", "tau"]
-LOG_PARAMS = ["cost_stop_error", "cost_time"]
+LINEAR_PARAMS = ["q_d_n", "q_d", "q_s", "tau"]
+LOG_PARAMS = ["cost_stop_error", "cost_time", "inv_temp"]
 PARAM_ORDER = LINEAR_PARAMS + LOG_PARAMS
 
 FIXED_PARAMS = {
     "rate_stop_trial": 1.0 / 6.0,
-    "inv_temp": 50.0,
     "cost_go_error": 1.0,
-    "cost_go_missing": 1.0
+    "cost_go_missing": 1.0,
+    "q_s_n": 0.1
 }
 
 RESULT_LEVELS = ["GS", "GE", "GM", "SS", "SE"]
