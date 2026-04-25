@@ -94,6 +94,9 @@ def run_ppc(fp: Path, df_params: pd.DataFrame):
                 theta[k] = float(np.clip(theta[k], max(lo, 1e-5), min(hi, 1.0 - 1e-5)))
             else:
                 theta[k] = float(np.clip(theta[k], lo, hi))
+            
+            if k == "tau":
+                theta[k] = int(round(theta[k]))
                 
     theta.update(FIXED_PARAMS)
     

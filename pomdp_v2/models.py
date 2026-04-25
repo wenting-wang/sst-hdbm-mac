@@ -45,7 +45,7 @@ class POMDP:
 
         # Softmax inverse temperature
         self.inv_temp = inv_temp
-        self.tau = tau  # Added Non-decision time
+        self.tau = int(round(tau))  # Added Non-decision time
 
         # Discretization parameters
         self.bins = 80
