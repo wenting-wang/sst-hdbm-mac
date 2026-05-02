@@ -10,17 +10,7 @@ from scipy.optimize import minimize
 from pathlib import Path
 
 # ==========================================
-# Config
-# ==========================================
-# 修改这里的数量来控制处理多少个文件（比如 100）
-NUM_TO_FIT = 100 
-
-# 如果你想画特定的 3 个人，就把他们的纯 ID 填在下面列表中，例如 ["INV1234567", "INV7654321", "INV9999999"]
-# 如果你想系统自动挑选 5%、50%、95%，请保持它是 None
-TARGET_SUBJECTS = None 
-
-# ==========================================
-# 1. DRM 模拟器与损失函数
+# 1. DRM 模拟器与损失函数 (5参数升级版)
 # ==========================================
 def generate_wald_rts(v, a, t_er, n_trials, seed=None):
     if seed is not None: np.random.seed(seed)
@@ -28,51 +18,91 @@ def generate_wald_rts(v, a, t_er, n_trials, seed=None):
     return np.random.wald(a / v, a**2, n_trials) + t_er
 
 def simulate_drm_fast_for_fitting(params, ssd_list, n_go=2000, n_stop_per_ssd=500, seed=42):
-    v_go, v_stop, a, t_er = params
-    go_rts = generate_wald_rts(v_go, a, t_er, n_go, seed=seed)
-    go_quantiles = np.percentile(go_rts, [10, 30, 50, 70, 90])
+    v_go_c, v_go_e, v_stop, a, t_er = params
     
+    go_c_rts = generate_wald_rts(v_go_c, a, t_er, n_go, seed=seed)
+    go_e_rts = generate_wald_rts(v_go_e, a, t_er, n_go, seed=seed+1)
+    
+    go_rts = np.minimum(go_c_rts, go_e_rts)
+    is_error = go_e_rts < go_c_rts
+    is_miss = go_rts > 1.0 
+    
+    sim_p_ge = np.mean(is_error & ~is_miss)
+    sim_p_gm = np.mean(is_miss)
+    
+    valid_gs = go_rts[~is_error & ~is_miss]
+    if len(valid_gs) >= 5:
+        go_quantiles = np.percentile(valid_gs, [10, 30, 50, 70, 90])
+    else:
+        go_quantiles = np.array([1.0]*5)
+        
     stop_results = {}
     for ssd in ssd_list:
-        sim_go_rts = generate_wald_rts(v_go, a, t_er, n_stop_per_ssd, seed=seed+int(ssd*1000))
-        sim_stop_rts = generate_wald_rts(v_stop, a, t_er, n_stop_per_ssd, seed=seed+int(ssd*2000)) + ssd
-        stop_results[ssd] = np.mean(sim_go_rts < sim_stop_rts)
-    return go_quantiles, stop_results
+        sim_go_c = generate_wald_rts(v_go_c, a, t_er, n_stop_per_ssd, seed=seed+int(ssd*1000))
+        sim_go_e = generate_wald_rts(v_go_e, a, t_er, n_stop_per_ssd, seed=seed+int(ssd*2000))
+        sim_go = np.minimum(sim_go_c, sim_go_e)
+        
+        sim_stop = generate_wald_rts(v_stop, a, t_er, n_stop_per_ssd, seed=seed+int(ssd*3000)) + ssd
+        p_respond = np.mean((sim_go < sim_stop) & (sim_go <= 1.0))
+        stop_results[ssd] = p_respond
+        
+    return go_quantiles, sim_p_ge, sim_p_gm, stop_results
 
 def simulate_drm_abcd_format(params, n_trials=400, n_repeat=30, step_size_ms=25):
-    v_go, v_stop, a, t_er = params['v_go'], params['v_stop'], params['a'], params['t_er']
+    v_go_c, v_go_e = params['v_go_c'], params['v_go_e']
+    v_stop, a, t_er = params['v_stop'], params['a'], params['t_er']
+    
     all_rows = []
+    deadline_steps = int(1000 / step_size_ms)
     
     for i in range(n_repeat):
         np.random.seed(42 + i) 
         current_ssd_steps = 200 / step_size_ms 
+        
         for t in range(n_trials):
             is_stop_trial = np.random.rand() < 0.20
-            mean_go = a / max(v_go, 0.001)
-            go_rt_raw = np.random.wald(mean_go, a**2) + t_er
+            
+            mean_go_c = a / max(v_go_c, 0.001)
+            mean_go_e = a / max(v_go_e, 0.001)
+            go_c_rt_raw = np.random.wald(mean_go_c, a**2) + t_er
+            go_e_rt_raw = np.random.wald(mean_go_e, a**2) + t_er
+            
+            if go_c_rt_raw < go_e_rt_raw:
+                go_rt_raw, is_correct = go_c_rt_raw, True
+            else:
+                go_rt_raw, is_correct = go_e_rt_raw, False
+                
             go_rt_steps = int(go_rt_raw * (1000 / step_size_ms)) 
             
             if not is_stop_trial:
-                result, rt_val, ssd_val = 'GS', go_rt_steps, np.nan
+                if go_rt_steps > deadline_steps:
+                    result, rt_val = 'GM', np.nan
+                else:
+                    result = 'GS' if is_correct else 'GE'
+                    rt_val = go_rt_steps
+                ssd_val = np.nan
             else:
+                ssd_val = current_ssd_steps  # <--- 修复: 之前漏了这句，导致画图时找不到 SSD 的值
                 mean_stop = a / max(v_stop, 0.001)
                 stop_rt_raw = np.random.wald(mean_stop, a**2) + t_er
                 stop_rt_steps = int(stop_rt_raw * (1000 / step_size_ms))
                 
-                if go_rt_steps < (stop_rt_steps + current_ssd_steps):
-                    result, rt_val, ssd_val = 'SE', go_rt_steps, current_ssd_steps
+                # Go 与 Stop 赛跑 (如果在死线之前跑赢了Stop，算SE；否则全算作SS)
+                if go_rt_steps < (stop_rt_steps + current_ssd_steps) and go_rt_steps <= deadline_steps:
+                    result, rt_val = 'SE', go_rt_steps
                     current_ssd_steps = max(0, current_ssd_steps - (50 / step_size_ms))
                 else:
-                    result, rt_val, ssd_val = 'SS', np.nan, current_ssd_steps
+                    result, rt_val = 'SS', np.nan
                     current_ssd_steps = current_ssd_steps + (50 / step_size_ms)
                     
             all_rows.append({'result': result, 'rt': rt_val, 'ssd': ssd_val, 'sim_id': i, 'trial': t + 1})
     return pd.DataFrame(all_rows)
 
-def loss_function(params, empirical_data, w_rt=1.0, w_inhibition=2.0):
-    v_go, v_stop, a, t_er = params
+def loss_function(params, empirical_data, w_rt=1.0, w_inhibition=2.0, w_ge=5.0, w_gm=5.0):
+    v_go_c, v_go_e, v_stop, a, t_er = params
     penalty = 0.0
-    if v_go <= 0.1: penalty += (0.1 - v_go) * 1000 + 100
+    if v_go_c <= 0.1: penalty += (0.1 - v_go_c) * 1000 + 100
+    if v_go_e <= 0.001: penalty += (0.001 - v_go_e) * 1000 + 100
     if v_stop <= 0.1: penalty += (0.1 - v_stop) * 1000 + 100
     if a <= 0.1: penalty += (0.1 - a) * 1000 + 100
     if t_er <= 0.05: penalty += (0.05 - t_er) * 1000 + 100
@@ -80,25 +110,35 @@ def loss_function(params, empirical_data, w_rt=1.0, w_inhibition=2.0):
     if penalty > 0: return 1000 + penalty 
         
     ssd_list = list(empirical_data['p_respond'].keys())
-    sim_go_q, sim_p_resp = simulate_drm_fast_for_fitting(params, ssd_list)
+    sim_go_q, sim_p_ge, sim_p_gm, sim_p_resp = simulate_drm_fast_for_fitting(params, ssd_list)
     
     emp_go_q = np.array(empirical_data['go_quantiles'])
     error_rt = np.mean((np.array(sim_go_q) - emp_go_q)**2) * w_rt
+    
+    error_ge = (sim_p_ge - empirical_data['p_ge'])**2 * w_ge
+    error_gm = (sim_p_gm - empirical_data['p_gm'])**2 * w_gm
     
     emp_p_array = np.array([empirical_data['p_respond'][ssd] for ssd in ssd_list])
     sim_p_array = np.array([sim_p_resp[ssd] for ssd in ssd_list])
     error_inhibition = np.mean((sim_p_array - emp_p_array)**2) * w_inhibition
         
-    return error_rt + error_inhibition
+    return error_rt + error_inhibition + error_ge + error_gm
 
 # ==========================================
 # 2. 数据处理与特征提取
 # ==========================================
 def extract_empirical_data(df):
-    go_trials = df[df['result'] == 'GS']
+    go_trials = df[df['sequence'] == 0]
     if go_trials.empty: return None
-    rts = go_trials['rt_real'].dropna().values / 1000.0
+    
+    gs_trials = go_trials[go_trials['result'] == 'GS']
+    if gs_trials.empty: return None
+    
+    rts = gs_trials['rt_real'].dropna().values / 1000.0
     go_quantiles = np.percentile(rts, [10, 30, 50, 70, 90])
+    
+    p_ge = (go_trials['result'] == 'GE').mean()
+    p_gm = (go_trials['result'] == 'GM').mean()
     
     stop_trials = df[df['result'].isin(['SS', 'SE'])]
     p_respond = {}
@@ -108,17 +148,15 @@ def extract_empirical_data(df):
             p_respond[ssd_real / 1000.0] = (group['result'] == 'SE').mean()
             
     if not p_respond: return None
-    return {'go_quantiles': go_quantiles, 'p_respond': p_respond}
+    return {'go_quantiles': go_quantiles, 'p_ge': p_ge, 'p_gm': p_gm, 'p_respond': p_respond}
 
 from preprocessing import preprocessing 
 
 def get_subject_id(file_name):
-    """提取 ID，去除 NDAR_ 前缀，只保留 INVxxxxxxx 的部分"""
     name = Path(file_name).name
     if 'NDAR' in name:
         parts = name.split('_')
         for i, part in enumerate(parts):
-            # 当找到 NDAR 时，直接返回它后面的那段纯 ID（丢掉 NDAR_）
             if part == 'NDAR' and i + 1 < len(parts):
                 return parts[i+1] 
     return Path(file_name).stem.split('_')[0].replace('NDAR_', '')
@@ -138,7 +176,7 @@ def load_and_preprocess_file(file_path):
         return subject_id, preprocessing(str(fp))
 
 # ==========================================
-# 3. 绘图配置与函数 (5-Panel 完整版)
+# 3. 绘图配置与函数
 # ==========================================
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
@@ -241,7 +279,8 @@ def plot_drm_ppc(subjects_data, output_path="fig_drm_ppc.png", step_size_ms=25):
         # --- Row 4 (Panel D): SSD Tracking ---
         ax = axs[3, col_idx]
         ax.scatter(df_obs.index + 1, df_obs['ssd_real'], color=COLOR_OBS, s=STYLE['marker_size'], alpha=0.6, zorder=10)
-        df_sim['ssd_ms'] = df_sim.groupby('sim_id')['ssd'].ffill() * step_size_ms
+        # 修复: 加入 bfill() 确保如果最初几次是 Go 也能画出线来
+        df_sim['ssd_ms'] = df_sim.groupby('sim_id')['ssd'].ffill().bfill() * step_size_ms
         for i, sub in df_sim.groupby('sim_id'):
             if i < 3: ax.step(sub['trial'], sub['ssd_ms'], color=COLOR_SIM, alpha=0.6, linewidth=STYLE['sim_trace_lw'], where='post')
         ax.set_xlim(0, 400); ax.set_yticks([0, 200, 400, 600]); ax.set_ylim(-25, 750); ax.set_xlabel("Trial", fontsize=STYLE['label_fontsize'])
@@ -284,17 +323,13 @@ def plot_drm_ppc(subjects_data, output_path="fig_drm_ppc.png", step_size_ms=25):
 # 4. 主执行流 (Pipeline)
 # ==========================================
 def run_pipeline(data_dir, output_csv="drm_fit_results.csv", output_img="fig_drm_ppc_comparison.png", n_fit=100, target_plot_sids=None):
-    """
-    n_fit: 要拟合的被试数量
-    target_plot_sids: 特定想要画图的被试 ID 列表（无需 NDAR_）。如果为 None，则挑 5%, 50%, 95%。
-    """
     folder_path = Path(data_dir)
     files = list(folder_path.glob("*.zip")) or list(folder_path.rglob("*.csv"))
     target_files = files[:n_fit]
     
     print(f"\n--- STEP 1: FITTING {len(target_files)} SUBJECTS ---")
     results = []
-    initial_guess = [2.5, 3.0, 1.0, 0.2] 
+    initial_guess = [2.5, 0.2, 3.0, 1.0, 0.2] 
     
     for fp in target_files:
         try:
@@ -304,38 +339,34 @@ def run_pipeline(data_dir, output_csv="drm_fit_results.csv", output_img="fig_drm
                 print(f"[{subject_id}] Skipped: Not enough valid trials.")
                 continue
                 
-            res = minimize(loss_function, initial_guess, args=(empirical_data,), method='Nelder-Mead', options={'maxiter': 800})
+            res = minimize(loss_function, initial_guess, args=(empirical_data,), method='Nelder-Mead', options={'maxiter': 1000})
             results.append({
                 'subject_id': subject_id, 'file_path': str(fp), 'df_clean': df_clean, 
-                'v_go': res.x[0], 'v_stop': res.x[1], 'a': res.x[2], 't_er': res.x[3], 'gof': res.fun
+                'v_go_c': res.x[0], 'v_go_e': res.x[1], 'v_stop': res.x[2], 'a': res.x[3], 't_er': res.x[4], 'gof': res.fun
             })
             print(f"[{subject_id}] Fitted. Cost: {res.fun:.2f}")
         except Exception as e:
             print(f"[{fp.name}] Error: {e}")
             
     df_results = pd.DataFrame(results)
-    df_results[['subject_id', 'file_path', 'v_go', 'v_stop', 'a', 't_er', 'gof']].to_csv(output_csv, index=False)
+    df_results[['subject_id', 'file_path', 'v_go_c', 'v_go_e', 'v_stop', 'a', 't_er', 'gof']].to_csv(output_csv, index=False)
     print(f"\n=> Fitting completed. Parameters saved to {output_csv}")
     
     print(f"\n--- STEP 2: GENERATING PLOT ---")
     df_sorted = df_results.sort_values(by='gof').reset_index(drop=True)
     n = len(df_sorted)
-    
     selection = []
     
-    # 如果指定了特定被试，则去寻找他们
     if target_plot_sids:
         print(f"Looking for specific target subjects: {target_plot_sids}")
         for sid in target_plot_sids:
             matches = df_sorted[df_sorted['subject_id'] == sid]
             if not matches.empty:
-                # 获取该被试排序后的索引位置
                 idx = matches.index[0]
                 cost_val = matches.iloc[0]['gof']
                 selection.append((idx, f"Target Subject\nCost: {cost_val:.2f}"))
             else:
                 print(f"[Warning] Target Subject '{sid}' not found among fitted subjects.")
-    # 否则按默认的 5%, 50%, 95% 挑选
     else:
         if n < 3:
             print("Not enough successful fits to select 3 percentiles. Aborting plot generation.")
@@ -346,9 +377,7 @@ def run_pipeline(data_dir, output_csv="drm_fit_results.csv", output_img="fig_drm
             (int(n * 0.95), "Poor Fit (95th %ile Cost)")
         ]
     
-    if not selection:
-        print("No subjects selected to plot.")
-        return
+    if not selection: return
 
     subjects_data_for_plot = []
     for idx, label_text in selection:
@@ -357,7 +386,10 @@ def run_pipeline(data_dir, output_csv="drm_fit_results.csv", output_img="fig_drm
         print(f"Preparing data for: {sid} ({label_text.replace(chr(10), ' - ')})")
         
         df_obs = subj_info['df_clean']
-        params_dict = {'v_go': subj_info['v_go'], 'v_stop': subj_info['v_stop'], 'a': subj_info['a'], 't_er': subj_info['t_er']}
+        params_dict = {
+            'v_go_c': subj_info['v_go_c'], 'v_go_e': subj_info['v_go_e'], 
+            'v_stop': subj_info['v_stop'], 'a': subj_info['a'], 't_er': subj_info['t_er']
+        }
         df_sim = simulate_drm_abcd_format(params_dict, n_trials=400, n_repeat=30, step_size_ms=25)
         
         subjects_data_for_plot.append({'label': f"{sid}\n{label_text}", 'df_obs': df_obs, 'df_sim': df_sim})
@@ -366,5 +398,7 @@ def run_pipeline(data_dir, output_csv="drm_fit_results.csv", output_img="fig_drm
 
 if __name__ == "__main__":
     DATA_DIR = "/Users/w/Desktop/data/sst_valid_base"
+    NUM_TO_FIT = 100 
+    TARGET_SUBJECTS = None 
     
     run_pipeline(DATA_DIR, n_fit=NUM_TO_FIT, target_plot_sids=TARGET_SUBJECTS)
