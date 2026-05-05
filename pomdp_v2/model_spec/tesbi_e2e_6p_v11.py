@@ -52,18 +52,18 @@ except (ValueError, TypeError):
 USE_PREPROCESSING = True # when use  real abcd data
 # USE_PREPROCESSING = False # when use example data
 
-MODEL_TAG = "6p_v6"
+MODEL_TAG = "6p_v11"
 
 PARAM_RANGES = {
-    "q_d_n": (0.0, 1.0),
     "q_d":   (0.5, 1.0),
     "q_s":   (0.5, 1.0),
-    "cost_stop_error": (0.01, 50.0),
-    "cost_time":       (0.0001, 0.5),  
-    "tau":   (4, 12),
+    "cost_stop_error": (1, 50.0),
+    "cost_time":       (0.01, 0.5),  
+    "tau":   (4, 16),
+    "inv_temp": (5.0, 50.0)
 }
 
-LINEAR_PARAMS = ["q_d_n", "q_d", "q_s", "tau"]
+LINEAR_PARAMS = ["q_d", "q_s", "tau", "inv_temp"]
 LOG_PARAMS = ["cost_stop_error", "cost_time"]
 PARAM_ORDER = LINEAR_PARAMS + LOG_PARAMS
 
@@ -71,8 +71,8 @@ FIXED_PARAMS = {
     "rate_stop_trial": 1.0 / 6.0,
     "cost_go_error": 3.0,
     "cost_go_missing": 1.0,
-    "q_s_n": 0.01,
-    "inv_temp": 20
+    "q_d_n": 0.01,
+    "q_s_n": 0.01
 }
 
 RESULT_LEVELS = ["GS", "GE", "GM", "SS", "SE"]
@@ -114,6 +114,7 @@ def unscale_params(scaled_array: np.ndarray) -> np.ndarray:
         scaled_array = scaled_array.detach().cpu().numpy()
     scaled_array = np.clip(scaled_array, 0.0, 1.0)
     return scaled_array * (PARAM_TRANSFORMED_MAX - PARAM_TRANSFORMED_MIN) + PARAM_TRANSFORMED_MIN
+
 
 def scaled_to_dict(scaled_vec: np.ndarray) -> Dict[str, float]:
     unscaled = unscale_params(scaled_vec)

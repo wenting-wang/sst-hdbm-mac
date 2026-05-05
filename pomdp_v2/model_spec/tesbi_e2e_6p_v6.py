@@ -115,6 +115,7 @@ def unscale_params(scaled_array: np.ndarray) -> np.ndarray:
     scaled_array = np.clip(scaled_array, 0.0, 1.0)
     return scaled_array * (PARAM_TRANSFORMED_MAX - PARAM_TRANSFORMED_MIN) + PARAM_TRANSFORMED_MIN
 
+
 def scaled_to_dict(scaled_vec: np.ndarray) -> Dict[str, float]:
     unscaled = unscale_params(scaled_vec)
     out = {k: (float(np.exp(unscaled[i])) if k in LOG_PARAMS else float(unscaled[i])) for i, k in enumerate(PARAM_ORDER)}

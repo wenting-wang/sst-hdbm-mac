@@ -52,7 +52,7 @@ except (ValueError, TypeError):
 USE_PREPROCESSING = True # when use  real abcd data
 # USE_PREPROCESSING = False # when use example data
 
-MODEL_TAG = "6p_v6"
+MODEL_TAG = "6p_v7"
 
 PARAM_RANGES = {
     "q_d_n": (0.0, 1.0),
@@ -72,7 +72,7 @@ FIXED_PARAMS = {
     "cost_go_error": 3.0,
     "cost_go_missing": 1.0,
     "q_s_n": 0.01,
-    "inv_temp": 20
+    "inv_temp": 40
 }
 
 RESULT_LEVELS = ["GS", "GE", "GM", "SS", "SE"]
@@ -114,6 +114,7 @@ def unscale_params(scaled_array: np.ndarray) -> np.ndarray:
         scaled_array = scaled_array.detach().cpu().numpy()
     scaled_array = np.clip(scaled_array, 0.0, 1.0)
     return scaled_array * (PARAM_TRANSFORMED_MAX - PARAM_TRANSFORMED_MIN) + PARAM_TRANSFORMED_MIN
+
 
 def scaled_to_dict(scaled_vec: np.ndarray) -> Dict[str, float]:
     unscaled = unscale_params(scaled_vec)
