@@ -377,12 +377,12 @@ def generate_latex_tables():
             else:
                 row_str += f" & {val:.3f}"
                 has_params = True
-                if float(val) <= 0.6:
+                if float(val) <= 0.65:
                     is_valid = False
                     
-        # Append checkmark ONLY if there are params and ALL are > 0.6
+        # Append checkmark ONLY if there are params and ALL are > 0.65
         if is_valid and has_params:
-            row_str += r" & \checkmark \\"
+            row_str += r" & \checkmark \\ "
         else:
             row_str += r" & \\"
             
