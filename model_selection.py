@@ -269,6 +269,7 @@ def generate_latex_tables():
     t1.append(r"    \setlength{\tabcolsep}{3pt}")
     t1.append(r"    \captionsetup{labelfont=bf}")
     t1.append(r"    \caption{\textbf{POMDP model parameters and descriptions}}")
+    t1.append(r"    \label{tab:model_variants}")
     
     for idx, sub_df in enumerate(groups):
         col_format = "l l " + "c " * len(sub_df)
@@ -335,6 +336,7 @@ def generate_latex_tables():
     t2.append(r"    \setlength{\tabcolsep}{3pt}")
     t2.append(r"    \captionsetup{labelfont=bf}")
     t2.append(r"    \caption{\textbf{Empirical distances from Posterior Predictive Checks}}")
+    t2.append(r"    \label{tab:ppc_metrics}")
     t2.append(r"    \makebox[\textwidth][c]{%")
     t2.append(r"    \begin{tabular}{l cccc ccc cc c}")
     t2.append(r"        \toprule")
@@ -373,7 +375,8 @@ def generate_latex_tables():
     t3.append(r"    \setlength{\tabcolsep}{3pt}")
     t3.append(r"    \captionsetup{labelfont=bf}")
     t3.append(r"    \caption{\textbf{Parameter recovery correlations ($r$) across model variants}}")
-    t3.append(r"    \makebox[\textwidth][c]{%") # 强制整个页面居中
+    t3.append(r"    \label{tab:recovery_corr}")
+    t3.append(r"    \makebox[\textwidth][c]{%")
     t3.append(r"    \begin{tabular}{l cccccccccc c}")
     t3.append(r"        \toprule")
     t3.append(r"        \textbf{Model} & $\godirr$ & $\stdirr$ & $\tau$ & $c_{\text{se}}$ & $c_t$ & $c_{\text{ge}}$ & $c_{\text{gm}}$ & $\gonull$ & $\stnull$ & $\varphi$ & \textbf{Valid} \\")
