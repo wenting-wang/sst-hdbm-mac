@@ -8,6 +8,8 @@
 #SBATCH --cpus-per-task=48
 #SBATCH --time=24:00:00
 #SBATCH --output=slurm_cv_batch-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=wenting.wang.cd@outlook.com
 
 set -eo pipefail
 

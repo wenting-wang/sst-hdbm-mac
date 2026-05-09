@@ -80,7 +80,7 @@ def worker_cv_eval(task_data):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sst_folder", type=str, required=True)
-    parser.add_argument("--filter_csv", type=str, required=True)
+    parser.add_argument("--filter_csv", type=str, required=True, help="clinical_behavior.csv path")
     parser.add_argument("--model_config", type=str, required=True, help="e.g., tesbi_e2e_5p_v3")
     parser.add_argument("--weights_path", type=str, required=True, help="Absolute path to the .pth file")
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Proportion of trials used for inference")
@@ -97,32 +97,29 @@ if __name__ == "__main__":
     Path("./outputs").mkdir(exist_ok=True)
 
     data_dir = Path(args.sst_folder)
-    df_filter = pd.read_csv(args.filter_csv)
-    valid_ids = df_filter['subject_id'].astype(str).str.replace('NDAR_', '', regex=False).unique()
 
     # ==========================================
-    # Phase 1: Data Extraction
+    # Phase 0: Build Highly Efficient Filter Set
+    # ==========================================
+    df_filter = pd.read_csv(args.filter_csv)
+    valid_ids_set = set(df_filter['subject_id'].astype(str).str.replace('NDAR_', '', regex=False).tolist())
+    print(f"\n[Phase 0] Loaded {len(valid_ids_set)} valid subject IDs from {args.filter_csv}")
+
+    # ==========================================
+    # Phase 1: Data Extraction & Strict Filtering
     # ==========================================
     files = list(set(list(data_dir.rglob("*.csv")) + list(data_dir.glob("*.zip"))))
-    print(f"\n[Phase 1] Loading {len(files)} data files...")
+    print(f"[Phase 1] Scanning {len(files)} data files in folder...")
     
     all_subjects_data = []
     
     for fp in files:
         filename = fp.name
-        matched_sid = None
-        for sid in valid_ids:
-            if str(sid) in filename:
-                matched_sid = str(sid)
-                break
         
-        if not matched_sid:
-            if fp.suffix == '.zip':
-                alt_sid = filename.split('_baseline_')[0]
-                if alt_sid in valid_ids:
-                    matched_sid = alt_sid
-                    
-        if not matched_sid:
+        clean_filename = filename.replace('NDAR_', '')
+        extracted_sid = clean_filename.split('_')[0]
+        
+        if extracted_sid not in valid_ids_set:
             continue
             
         try:
@@ -130,7 +127,7 @@ if __name__ == "__main__":
                 with tempfile.TemporaryDirectory() as tmpdir:
                     with zipfile.ZipFile(fp, 'r') as zr:
                         zr.extractall(tmpdir)
-                    csvs = list(Path(tmpdir).rglob(f"*{matched_sid}*.csv"))
+                    csvs = list(Path(tmpdir).rglob(f"*{extracted_sid}*.csv"))
                     if not csvs: csvs = list(Path(tmpdir).rglob("*.csv")) 
                     if csvs:
                         df_obs = preprocessing(str(csvs[0])) if USE_PREPROCESSING else pd.read_csv(csvs[0])
@@ -138,9 +135,11 @@ if __name__ == "__main__":
             else:
                 df_obs = preprocessing(str(fp)) if USE_PREPROCESSING else pd.read_csv(fp)
                 
-            all_subjects_data.append({"subject_id": matched_sid, "df_obs": df_obs})
+            all_subjects_data.append({"subject_id": extracted_sid, "df_obs": df_obs})
         except Exception as e:
             continue
+            
+    print(f"[Phase 1] Successfully loaded and filtered {len(all_subjects_data)} subjects.")
 
     # ==========================================
     # Phase 2: GPU Parameter Inference (Train Split)
