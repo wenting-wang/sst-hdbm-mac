@@ -55,23 +55,23 @@ USE_PREPROCESSING = True # when use  real abcd data
 MODEL_TAG = "7p_v1"
 
 PARAM_RANGES = {
-    "q_d_n": (0.0, 1.0),
-    "q_d":   (0.5, 1.0),
-    "q_s_n": (0.0, 1.0),
-    "q_s":   (0.5, 1.0),
-    "cost_stop_error": (0.01, 2.0),
-    "cost_time":       (0.0001, 0.05),  
-    "tau":   (4, 16)            # Added NDT: 100ms to 400ms
+    "q_d": (0.5, 1.0),
+    "q_s": (0.5, 1.0),
+    "tau": (4.0, 16.0),
+    "inv_temp": (10.0, 100.0),
+    "cost_stop_error": (1.0, 50.0),
+    "cost_go_error": (1.0, 50.0),
+    "cost_time": (0.01, 0.5)
 }
 
-LINEAR_PARAMS = ["q_d_n", "q_d", "q_s_n", "q_s", "tau"]
-LOG_PARAMS = ["cost_stop_error", "cost_time"]
+LINEAR_PARAMS = ["q_d", "q_s", "tau", "inv_temp"]
+LOG_PARAMS = ["cost_stop_error", "cost_go_error", "cost_time"]
 PARAM_ORDER = LINEAR_PARAMS + LOG_PARAMS
 
 FIXED_PARAMS = {
     "rate_stop_trial": 1.0 / 6.0,
-    "inv_temp": 50.0,
-    "cost_go_error": 1.0,
+    "q_d_n": 0.05,
+    "q_s_n": 0.05,
     "cost_go_missing": 1.0
 }
 
@@ -112,6 +112,7 @@ def scale_params(raw_array: np.ndarray) -> np.ndarray:
 def unscale_params(scaled_array: np.ndarray) -> np.ndarray:
     if isinstance(scaled_array, torch.Tensor):
         scaled_array = scaled_array.detach().cpu().numpy()
+    scaled_array = np.clip(scaled_array, 0.0, 1.0)
     return scaled_array * (PARAM_TRANSFORMED_MAX - PARAM_TRANSFORMED_MIN) + PARAM_TRANSFORMED_MIN
 
 

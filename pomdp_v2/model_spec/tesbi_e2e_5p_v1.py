@@ -55,12 +55,12 @@ USE_PREPROCESSING = True # when use  real abcd data
 MODEL_TAG = "5p_v1"
 
 PARAM_RANGES = {
-    "q_d":   (0.5, 1.0),
-    "q_s":   (0.5, 1.0),
-    "cost_stop_error": (1, 50.0),
-    "cost_time":       (0.01, 0.5),  
-    "tau":   (4, 16)
-    }
+    "q_d": (0.5, 1.0),
+    "q_s": (0.5, 1.0),
+    "tau": (4.0, 16.0),
+    "cost_stop_error": (1.0, 50.0),
+    "cost_time": (0.01, 0.5)
+}
 
 LINEAR_PARAMS = ["q_d", "q_s", "tau"]
 LOG_PARAMS = ["cost_stop_error", "cost_time"]
@@ -68,11 +68,11 @@ PARAM_ORDER = LINEAR_PARAMS + LOG_PARAMS
 
 FIXED_PARAMS = {
     "rate_stop_trial": 1.0 / 6.0,
-    "q_d_n": 0.01,
-    "q_s_n": 0.01,
+    "q_d_n": 0.05,
+    "q_s_n": 0.05,
     "cost_go_error": 3.0,
     "cost_go_missing": 1.0,
-    "inv_temp": 20
+    "inv_temp": 20.0
 }
 
 RESULT_LEVELS = ["GS", "GE", "GM", "SS", "SE"]
