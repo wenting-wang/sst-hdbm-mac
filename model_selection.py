@@ -334,7 +334,7 @@ def generate_latex_tables():
     t3.append(r"    \scriptsize")
     t3.append(r"    \setlength{\tabcolsep}{3pt}")
     t3.append(r"    \captionsetup{labelfont=bf}")
-    t3.append(r"    \caption{\textbf{Parameter recovery correlations ($r$) across model variants}}")
+    t3.append(r"    \caption{\textbf{Parameter recovery correlations across model variants}}")
     t3.append(r"    \label{tab:recovery_corr}")
     t3.append(r"    \makebox[\textwidth][c]{%")
     t3.append(r"    \begin{tabular}{l cccccccccc c}")

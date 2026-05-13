@@ -8,17 +8,17 @@
     \makebox[\textwidth][c]{%
     \begin{tabular}{l l c c c c c c c c c c }
         \toprule
-        \textbf{Parameter} & \textbf{Prior Range} & \textbf{M5.1} & \textbf{M6.1} & \textbf{M6.2} & \textbf{M6.3} & \textbf{M6.4} & \textbf{M7.1} & \textbf{M7.2} & \textbf{M8.1} & \textbf{M8.2} & \textbf{M10.1} \\
+        \textbf{Parameter} & \textbf{Prior Range} & \textbf{M5.1} & \textbf{M5.2} & \textbf{M5.3} & \textbf{M6.1} & \textbf{M6.2} & \textbf{M6.3} & \textbf{M6.4} & \textbf{M7.1} & \textbf{M8.1} & \textbf{M10.1} \\
         \midrule
-        Go null ($\gonull$) & $[0, 1]$ & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & \checkmark & 0.05 & \checkmark & \checkmark \\
-        Go precision ($\godirr$) & $[0.5, 1]$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
-        Stop null ($\stnull$) & $[0, 1]$ & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & \checkmark & 0.05 & \checkmark & \checkmark \\
-        Stop precision ($\stdirr$) & $[0.5, 1]$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
-        Go error cost ($c_{\text{ge}}$) & $[1, 50]$ & 3 & \checkmark & 3 & 3 & \checkmark & \checkmark & 3 & \checkmark & 3 & \checkmark \\
-        Go missing cost ($c_{\text{gm}}$) & $[1, 50]$ & 1 & 1 & \checkmark & 1 & \checkmark & 1 & 1 & \checkmark & 1 & \checkmark \\
-        Stop error cost ($c_{\text{se}}$) & $[1, 50]$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
-        Time cost ($c_t$) & $[0.01, 0.5]$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
-        Inverse temperature ($\varphi$) & $[10, 100]$ & 20 & 20 & 20 & \checkmark & 20 & \checkmark & 20 & \checkmark & \checkmark & \checkmark \\
+        Go null ($\gonull$) & $[0, 1]$ & 0.05 & 0.05 & \checkmark & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & \checkmark \\
+        Go precision ($\godirr$) & $[0.5, 1]$ & \checkmark & 0.9 & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+        Stop null ($\stnull$) & $[0, 1]$ & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & 0.05 & \checkmark \\
+        Stop precision ($\stdirr$) & $[0.5, 1]$ & \checkmark & 0.9 & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+        Go error cost ($c_{\text{ge}}$) & $[1, 50]$ & 3 & \checkmark & 3 & \checkmark & 3 & 3 & \checkmark & \checkmark & \checkmark & \checkmark \\
+        Go missing cost ($c_{\text{gm}}$) & $[1, 50]$ & 1 & \checkmark & 1 & 1 & \checkmark & 1 & \checkmark & 1 & \checkmark & \checkmark \\
+        Stop error cost ($c_{\text{se}}$) & $[1, 50]$ & \checkmark & \checkmark & 10 & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+        Time cost ($c_t$) & $[0.01, 0.5]$ & \checkmark & \checkmark & 0.1 & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+        Inverse temperature ($\varphi$) & $[10, 100]$ & 20 & 20 & \checkmark & 20 & 20 & \checkmark & 20 & \checkmark & \checkmark & \checkmark \\
         Non-decision time ($\tau$) & $[4, 16]$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
         Stop prior ($\tilde{r}^{\nu}$) & Fixed & $1/6$ & $1/6$ & $1/6$ & $1/6$ & $1/6$ & $1/6$ & $1/6$ & $1/6$ & $1/6$ & $1/6$ \\
         \bottomrule
