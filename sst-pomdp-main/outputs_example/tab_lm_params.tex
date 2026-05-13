@@ -1,0 +1,21 @@
+\begin{table}[H]
+\begin{adjustwidth}{-2.25in}{0in} % Comment out/remove adjustwidth environment if table fits in text column.
+\centering
+\caption{\textbf{Multiple linear regression results of parameters with ADHD and covariates.}}
+\begin{tabularx}{\linewidth}{lXXXXX}
+\toprule
+\textbf{Parameter} & \textbf{Intercept} & \textbf{ADHD} & \textbf{Sex (Male)} & \textbf{IQ} & \textbf{Medication} \\
+\midrule
+$\chi$ & 0.789\textbf{***} (0.041) & -0.004 (0.002) & 0.009 (0.017) & 0.0000 (0.002) & 0.014 (0.017) \\
+$\chi'$ & 0.748\textbf{***} (0.100) & 0.003 (0.005) & -0.041 (0.041) & -0.007 (0.005) & 0.034 (0.041) \\
+$\delta$ & 0.754\textbf{***} (0.038) & 0.001 (0.002) & -0.010 (0.016) & -0.0004 (0.002) & 0.016 (0.016) \\
+$\delta'$ & 0.059\textbf{*} (0.025) & -0.0004 (0.001) & -0.018 (0.010) & 0.001 (0.001) & -0.014 (0.010) \\
+$c_{\mathrm{se}}$ & 1.276\textbf{***} (0.154) & 0.016\textbf{*} (0.008) & -0.043 (0.064) & 0.005 (0.008) & 0.043 (0.064) \\
+$\varphi$ & 82.933\textbf{***} (9.503) & -0.015 (0.478) & -3.763 (3.960) & -0.680 (0.468) & -4.129 (3.948) \\
+\bottomrule
+\end{tabularx}
+\begin{flushleft} Note: Multiple linear regression models ($N=100$). Entries are fixed-effect coefficients with Wald SEs in parentheses. Stars denote p-values: \textbf{*} $p<.05$, \textbf{**} $p<.01$, \textbf{***} $p<.001$. ADHD was the main predictor, with Sex, IQ, and Medication included as covariates.
+\end{flushleft}
+\label{tab:lm_pomdp}
+\end{adjustwidth}
+\end{table}
