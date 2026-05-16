@@ -1,0 +1,21 @@
+\begin{table}[H]
+\begin{adjustwidth}{-1in}{-1in} % Widen table for multiple predictors
+\centering
+\caption{\textbf{Standardized coefficients and effect sizes across all predictors.}}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{l | cc | cc | cc | cc}
+\toprule
+ & \multicolumn{2}{c|}{\textbf{ADHD}} & \multicolumn{2}{c|}{\textbf{Sex (Male)}} & \multicolumn{2}{c|}{\textbf{IQ}} & \multicolumn{2}{c}{\textbf{Medication}} \\
+\textbf{Param} & $\beta$ (SE) & $f^2$ & $\beta$ (SE) & $f^2$ & $\beta$ (SE) & $f^2$ & $\beta$ (SE) & $f^2$ \\
+\midrule
+$\chi$ (Go Precision) & -0.065\textbf{***} (0.018) & 0.0035 & 0.007 (0.034) & 0.0000 & 0.145\textbf{***} (0.017) & 0.0214 & 0.196\textbf{*} (0.079) & 0.0017 \\
+$\delta$ (Stop Precision) & 0.022 (0.018) & 0.0004 & -0.209\textbf{***} (0.034) & 0.0107 & -0.015 (0.017) & 0.0002 & 0.070 (0.080) & 0.0002 \\
+$\tau$ (Non-decision Time) & 0.028 (0.018) & 0.0007 & -0.247\textbf{***} (0.034) & 0.0151 & -0.091\textbf{***} (0.017) & 0.0085 & -0.072 (0.079) & 0.0002 \\
+$c_{\mathrm{se}}$ (Stop Error Cost) & -0.053\textbf{**} (0.018) & 0.0024 & 0.323\textbf{***} (0.034) & 0.0261 & 0.080\textbf{***} (0.017) & 0.0066 & -0.007 (0.079) & 0.0000 \\
+$c_{\mathrm{t}}$ (Time Cost) & -0.036\textbf{*} (0.018) & 0.0011 & 0.290\textbf{***} (0.034) & 0.0208 & 0.063\textbf{***} (0.017) & 0.0040 & -0.043 (0.079) & 0.0001 \\
+\bottomrule
+\end{tabular}}
+\begin{flushleft} \small Note: $N=3,567$. Continuous variables were Z-score standardized. Coefficients ($\beta$) with Wald SEs. Stars: \textbf{*} $p<.05$, \textbf{**} $p<.01$, \textbf{***} $p<.001$. $f^2$ denotes Cohen's $f^2$. \end{flushleft}
+\label{tab:all_effects}
+\end{adjustwidth}
+\end{table}

@@ -15,16 +15,24 @@ DATA_DIR = PROJECT_ROOT / "data"
 OUT_DIR = PROJECT_ROOT / "outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-PARAMS_CSV = DATA_DIR / "params_posteriors_6p_v8.csv" 
+PARAMS_CSV = DATA_DIR / "params_posteriors_5p_v1.csv" 
 STATS_CSV = DATA_DIR / "clinical_behavior.csv"
-OUTPUT_TEX = OUT_DIR / "tab_lm_params_6p_v8_all_effects.tex"
+OUTPUT_TEX = OUT_DIR / "tab_lm_params_5p_v1.tex"
 
-PARAMS_OF_INTEREST = ['q_d_n', 'q_d', 'q_s', 'cost_stop_error', 'cost_time', 'tau']
+PARAMS_OF_INTEREST = [    'q_d',
+    'q_s',
+    'tau',
+    'cost_stop_error',
+    'cost_time']
 
 PARAM_DISPLAY_NAMES = {
-    'q_d': r"$\chi$", 'q_d_n': r"$\chi'$", 'q_s': r"$\delta$",
-    'cost_stop_error': r"$c_{\mathrm{se}}$", 'cost_time': r"$c_{\mathrm{t}}$", 'tau': r"$\tau$",
+    'q_d': r"$\chi$ (Go Precision)",
+    'q_s': r"$\delta$ (Stop Precision)",
+    'cost_stop_error': r"$c_{\mathrm{se}}$ (Stop Error Cost)",
+    'cost_time': r"$c_{\mathrm{t}}$ (Time Cost)",
+    'tau': r"$\tau$ (Non-decision Time)",
 }
+
 
 # Define predictors for model formulas and extraction
 PREDICTORS_FORMULA = {
@@ -209,44 +217,40 @@ if __name__ == "__main__":
     main()
     
 # ==============================================================================================================
-#  ALL PREDICTORS EFFECT SIZES (N = 4432)
+#  ALL PREDICTORS EFFECT SIZES (N = 3567)
 # ==============================================================================================================
 
 # --- Predictor: ADHD ---
 # Param                 Beta         SE    p-value    Part_R2         f2
-# q_d_n              -0.0263     0.0164     0.1088     0.0006     0.0006
-# q_d                -0.0584     0.0163     0.0004     0.0029     0.0029
-# q_s                 0.0254     0.0164     0.1208     0.0005     0.0005
-# cost_stop_error    -0.0469     0.0163     0.0041     0.0019     0.0019
-# cost_time          -0.0380     0.0163     0.0195     0.0012     0.0012
-# tau                 0.0454     0.0161     0.0050     0.0018     0.0018
+# q_d                -0.0645     0.0182     0.0004     0.0035     0.0035
+# q_s                 0.0223     0.0183     0.2229     0.0004     0.0004
+# tau                 0.0285     0.0182     0.1179     0.0007     0.0007
+# cost_stop_error    -0.0529     0.0181     0.0035     0.0024     0.0024
+# cost_time          -0.0364     0.0182     0.0456     0.0011     0.0011
 
 # --- Predictor: SEX ---
 # Param                 Beta         SE    p-value    Part_R2         f2
-# q_d_n               0.1844     0.0304     0.0000     0.0082     0.0083
-# q_d                 0.0529     0.0303     0.0811     0.0007     0.0007
-# q_s                -0.2342     0.0304     0.0000     0.0133     0.0134
-# cost_stop_error     0.2294     0.0303     0.0000     0.0128     0.0129
-# cost_time           0.2827     0.0302     0.0000     0.0194     0.0198
-# tau                -0.3045     0.0300     0.0000     0.0228     0.0233
+# q_d                 0.0072     0.0336     0.8299     0.0000     0.0000
+# q_s                -0.2090     0.0339     0.0000     0.0106     0.0107
+# tau                -0.2465     0.0337     0.0000     0.0148     0.0151
+# cost_stop_error     0.3233     0.0335     0.0000     0.0255     0.0261
+# cost_time           0.2898     0.0336     0.0000     0.0204     0.0208
 
 # --- Predictor: IQ ---
 # Param                 Beta         SE    p-value    Part_R2         f2
-# q_d_n               0.0419     0.0150     0.0053     0.0018     0.0018
-# q_d                 0.1040     0.0150     0.0000     0.0107     0.0109
-# q_s                -0.0312     0.0150     0.0378     0.0010     0.0010
-# cost_stop_error     0.0701     0.0150     0.0000     0.0049     0.0049
-# cost_time           0.0775     0.0149     0.0000     0.0061     0.0061
-# tau                -0.1261     0.0148     0.0000     0.0161     0.0163
+# q_d                 0.1452     0.0166     0.0000     0.0210     0.0214
+# q_s                -0.0151     0.0167     0.3679     0.0002     0.0002
+# tau                -0.0914     0.0166     0.0000     0.0084     0.0085
+# cost_stop_error     0.0803     0.0166     0.0000     0.0066     0.0066
+# cost_time           0.0627     0.0166     0.0002     0.0040     0.0040
 
 # --- Predictor: MEDICATION ---
 # Param                 Beta         SE    p-value    Part_R2         f2
-# q_d_n              -0.0500     0.0706     0.4792     0.0001     0.0001
-# q_d                 0.0977     0.0704     0.1655     0.0004     0.0004
-# q_s                -0.0154     0.0705     0.8268     0.0000     0.0000
-# cost_stop_error    -0.0090     0.0703     0.8986     0.0000     0.0000
-# cost_time          -0.0277     0.0701     0.6922     0.0000     0.0000
-# tau                -0.0829     0.0696     0.2335     0.0003     0.0003
+# q_d                 0.1964     0.0789     0.0129     0.0017     0.0017
+# q_s                 0.0701     0.0796     0.3784     0.0002     0.0002
+# tau                -0.0721     0.0791     0.3619     0.0002     0.0002
+# cost_stop_error    -0.0069     0.0787     0.9306     0.0000     0.0000
+# cost_time          -0.0432     0.0790     0.5845     0.0001     0.0001
 
 # ==============================================================================================================
 

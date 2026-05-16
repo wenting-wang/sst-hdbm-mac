@@ -22,20 +22,30 @@ OUT_DIR = PROJECT_ROOT / "outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Input Files
-PARAMS_CSV = DATA_DIR / "example_params_posteriors.csv"
+# PARAMS_CSV = DATA_DIR / "example_params_posteriors.csv"
+PARAMS_CSV = DATA_DIR / "params_posteriors_5p_v1.csv"
 
 # Example subject to plot (will fallback to first available if not found)
-SUBJECT_ID = 'EXAMPLE_SUB_001'
+# SUBJECT_ID = 'EXAMPLE_SUB_001'
+SUBJECT_ID = 'NDAR_INV1R97KJ7J'
 
 FIXED_PARAMS = {
-    'cost_go_error': 1.0,
-    'cost_go_missing': 1.0,
-    'cost_time': 0.001,
-    'rate_stop_trial': 1/6
+    "rate_stop_trial": 1.0 / 6.0,
+    "q_d_n": 0.05,
+    "q_s_n": 0.05,
+    "cost_go_error": 3.0,
+    "cost_go_missing": 1.0,
+    "inv_temp": 20.0
 }
 
 # Params to extract from CSV
-DYNAMIC_KEYS = ['q_d_n', 'q_d', 'q_s_n', 'q_s', 'cost_stop_error', 'inv_temp']
+DYNAMIC_PARAMS = [
+    'q_d',
+    'q_s',
+    'tau',
+    'cost_stop_error',
+    'cost_time'
+]
 
 # --- Helper Functions ---
 
@@ -68,7 +78,7 @@ def get_subject_params(target_id, path):
         raise KeyError("Could not find 'index' or 'param' column in posterior data.")
 
     # Extract dynamic params and merge with fixed
-    dynamic = {k: p_dict[k] for k in DYNAMIC_KEYS if k in p_dict}
+    dynamic = {k: p_dict[k] for k in DYNAMIC_PARAMS if k in p_dict}
     merged_params = {**dynamic, **FIXED_PARAMS}
     
     return merged_params, target_id
@@ -80,7 +90,9 @@ def main():
     try:
         print(f"Loading params for {SUBJECT_ID}...")
         params, final_subject_id = get_subject_params(SUBJECT_ID, PARAMS_CSV)
-
+        # params['tau'] = int(params['tau']) 
+        params['tau'] = 0
+        
         print(f"\nParameters loaded for {final_subject_id}:")
         for k, v in params.items():
             print(f"  {k}: {v}")

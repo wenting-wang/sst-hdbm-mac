@@ -4,6 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator # 新增：用于强制 X 轴显示整数
 import traceback
 
 # --- Configuration & Paths ---
@@ -19,28 +20,26 @@ OUT_DIR = PROJECT_ROOT / "outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- Input Files ---
-PARAMS_CSV = DATA_DIR / "example_params_posteriors.csv"
-STATS_CSV = DATA_DIR / "example_clinical_behavior.csv"
+PARAMS_CSV = DATA_DIR / "params_posteriors_5p_v1.csv"
+STATS_CSV = Path("/Users/w/sst-hdbm-mac/clinical_behavior.csv")
 
 # --- Output ---
 OUTPUT_PLOT = OUT_DIR / "fig_param_dist.png"
 
 PLOT_PARAMS = [
     'q_d',              # Chi
-    'q_s',              # Delta
-    'cost_stop_error',  # C_se
-    'q_d_n',            # Chi'
-    'q_s_n',            # Delta'
-    'inv_temp'          # Varphi
+    'cost_stop_error',
+    'tau',              # Non-decision time
+    'q_s',              # Delta 
+    'cost_time',        # Time Cost
 ]
 
 PARAM_DISPLAY_NAMES = {
-    'q_d_n': r"$\chi'$ (Go Null)",
     'q_d': r"$\chi$ (Go Precision)",
-    'q_s_n': r"$\delta'$ (Stop Null)",
     'q_s': r"$\delta$ (Stop Precision)",
     'cost_stop_error': r"$c_{\mathrm{se}}$ (Stop Error Cost)",
-    'inv_temp': r"$\varphi$ (Inverse Temperature)",
+    'cost_time': r"$c_{\mathrm{t}}$ (Time Cost)",
+    'tau': r"$\tau$ (Non-decision Time)",
 }
 
 # Plot Colors
@@ -73,6 +72,7 @@ def load_and_merge_data(params_path, stats_path, params_to_keep):
 
     # 1. Load Parameters
     df_param = pd.read_csv(params_path)
+    
     if 'subject_year' in df_param.columns:
         df_param = df_param.rename(columns={"subject_year": "year"})
     
@@ -87,6 +87,7 @@ def load_and_merge_data(params_path, stats_path, params_to_keep):
     else:
         raise ValueError("Cannot figure out pivot column (expected 'index' or 'param').")
         
+    df_pivot['subject_id'] = df_pivot['subject_id'].str.replace('NDAR_', '', regex=False)
     df_pivot.columns.name = None
     
     # 2. Load Stats
@@ -129,6 +130,13 @@ def plot_parameter_distributions(df, params, output_path):
             continue
             
         data = df[param].dropna()
+        
+        is_discrete = False
+        # --- 针对 tau 的特殊处理 ---
+        if param == 'tau':
+            data = data.astype(int)
+            is_discrete = True # 标记为离散数据
+            
         if data.empty:
             ax.axis('off')
             continue
@@ -136,7 +144,6 @@ def plot_parameter_distributions(df, params, output_path):
         # --- Calculate Statistics ---
         mean_val = data.mean()
         median_val = data.median()
-        # Mode calculation (taking the first mode if multiple exist)
         mode_val = data.round(3).mode()
         mode_val = mode_val[0] if not mode_val.empty else median_val
 
@@ -147,18 +154,25 @@ def plot_parameter_distributions(df, params, output_path):
         print(f"  Median: {median_val:.4f}")
         print(f"  Mode:   {mode_val:.4f}")
         print("-" * 20)
-
-        # --- Handle Bin Widths ---
-        # Lock bin_range to [0,1] for parameters starting with 'q_'
-        if param.startswith('q_'):
-            current_bin_range = (0, 1)
-        else:
-            current_bin_range = None # Default: use data min/max
         
         # --- Plot Histogram ---
-        sns.histplot(data, bins=BINS, binrange=current_bin_range,
-                     color=FILL_COLOR, edgecolor=EDGE_COLOR, 
-                     linewidth=0.3, stat="density", ax=ax, alpha=0.4)
+        if is_discrete:
+            # tau 使用 discrete=True，确保每个整数一个柱子且间距一致
+            sns.histplot(data, discrete=True,
+                         color=FILL_COLOR, edgecolor=EDGE_COLOR, 
+                         linewidth=0.3, stat="density", ax=ax, alpha=0.4)
+            # 强制 X 轴刻度只显示整数
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        else:
+            # 其他参数正常使用 BINS
+            if param.startswith('q_'):
+                current_bin_range = (0, 1)
+            else:
+                current_bin_range = None
+                
+            sns.histplot(data, bins=BINS, binrange=current_bin_range,
+                         color=FILL_COLOR, edgecolor=EDGE_COLOR, 
+                         linewidth=0.3, stat="density", ax=ax, alpha=0.4)
 
         # --- Add Vertical Lines ---
         ax.axvline(mean_val, color=COLOR_MEAN, linestyle='--', linewidth=1.2, zorder=5)
@@ -189,6 +203,10 @@ def plot_parameter_distributions(df, params, output_path):
                   frameon=False, loc='best')
 
         sns.despine(ax=ax)
+
+    # 隐藏没有参数的多余子图
+    for j in range(len(params), len(axes)):
+        axes[j].set_visible(False)
 
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.25, hspace=0.55)
